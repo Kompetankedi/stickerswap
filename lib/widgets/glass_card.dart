@@ -1,0 +1,41 @@
+import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
+
+/// A sleek card that adapts automatically to Light and Dark themes.
+class GlassCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsets padding;
+  final double? width;
+  final double? height;
+  final VoidCallback? onTap;
+
+  const GlassCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(20),
+    this.width,
+    this.height,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = AppTheme.isDark(context);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: width,
+        height: height,
+        padding: padding,
+        decoration: BoxDecoration(
+          gradient: AppTheme.getCardGrad(context),
+          borderRadius: AppTheme.cardRadius,
+          border: AppTheme.getBorder(context),
+          boxShadow: isDark ? null : AppTheme.lightCardShadow,
+        ),
+        child: child,
+      ),
+    );
+  }
+}
