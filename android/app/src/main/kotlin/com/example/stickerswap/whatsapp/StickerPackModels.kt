@@ -40,7 +40,8 @@ data class StickerPack(
         val STICKER_COLUMNS = arrayOf(
             "sticker_file_name",
             "sticker_emoji",
-            "sticker_accessibility_text"
+            "sticker_accessibility_text",
+            "is_animated_sticker"
         )
 
         fun encodePath(path: String): String {
@@ -157,7 +158,8 @@ data class StickerPack(
                 arrayOf(
                     encodePath(sticker.path),
                     emojiStr,
-                    ""
+                    "",
+                    if (animatedStickerPack) 1 else 0
                 )
             )
         }

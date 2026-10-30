@@ -422,9 +422,14 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
               sticker,
               widget.stickerSet.name,
             );
+            final thumbId = sticker.thumbFileId ?? sticker.fileId;
+            var thumbBytes = _thumbnails[thumbId];
+            thumbBytes ??= await _telegramService.downloadThumbnail(thumbId);
+
             processedPath = await _stickerProcessor.processVideoSticker(
               videoPath,
               outputDir,
+              fallbackThumbnailBytes: thumbBytes,
             );
           } else if (sticker.isAnimated) {
             // Lottie / animated sticker
@@ -432,10 +437,14 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
               sticker,
               widget.stickerSet.name,
             );
-            processedPath = await _stickerProcessor.processSticker(
+            final thumbId = sticker.thumbFileId ?? sticker.fileId;
+            var thumbBytes = _thumbnails[thumbId];
+            thumbBytes ??= await _telegramService.downloadThumbnail(thumbId);
+
+            processedPath = await _stickerProcessor.processLottieSticker(
               animatedPath,
               outputDir,
-              asAnimated: true,
+              fallbackThumbnailBytes: thumbBytes,
             );
           } else {
             // Static WebP sticker

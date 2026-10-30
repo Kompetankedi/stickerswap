@@ -1,6 +1,10 @@
 import 'dart:io';
+import 'dart:math';
+import 'dart:ui' as ui;
+import 'package:flutter/material.dart' show Canvas, Rect;
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
+import 'package:lottie/lottie.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -23,14 +27,15 @@ class StickerProcessor {
   /// Converts a video sticker (e.g. .webm) into a WhatsApp-compliant Animated WebP.
   Future<String> processVideoSticker(
     String videoPath,
-    String outputDir,
-  ) async {
+    String outputDir, {
+    Uint8List? fallbackThumbnailBytes,
+  }) async {
     final outputName =
         '${p.basenameWithoutExtension(videoPath)}_wa.webp';
     final outputPath = p.join(outputDir, outputName);
 
     try {
-      // 1. Extract frames via Android native MediaMetadataRetriever
+      // 1. Extract frames via Android native MediaCodec sequential extractor
       final dynamic rawFrames = await _videoChannel.invokeMethod('extractFrames', {
         'videoPath': videoPath,
         'fps': 12,
@@ -42,19 +47,157 @@ class StickerProcessor {
         return await _createAnimatedWebpFromPngFrames(frames, outputPath);
       }
     } catch (_) {
-      // Fallback if extraction fails
+      // Extraction failed
     }
 
-    return await processSticker(videoPath, outputDir, asAnimated: true);
+    if (fallbackThumbnailBytes != null && fallbackThumbnailBytes.isNotEmpty) {
+      return await processImageBytes(
+        fallbackThumbnailBytes,
+        outputDir,
+        outputName,
+        asAnimated: true,
+      );
+    }
+
+    throw Exception('Video ve önizleme çözülemedi: $videoPath');
   }
 
-  /// Converts a list of PNG frames into a compliant 512x512 Animated WebP.
+  /// Converts a Lottie sticker (.tgs) into a compliant 512x512 Animated WebP.
+  Future<String> processLottieSticker(
+    String tgsPath,
+    String outputDir, {
+    Uint8List? fallbackThumbnailBytes,
+  }) async {
+    final outputName =
+        '${p.basenameWithoutExtension(tgsPath)}_wa.webp';
+    final outputPath = p.join(outputDir, outputName);
+
+    try {
+      final fileBytes = await File(tgsPath).readAsBytes();
+      final unzipped = Uint8List.fromList(gzip.decode(fileBytes));
+      final composition = await LottieComposition.fromBytes(unzipped);
+      final drawable = LottieDrawable(composition);
+
+      final frames = <Uint8List>[];
+      const frameCount = 16;
+      final bounds = composition.bounds;
+      final drawRect = Rect.fromLTWH(
+        bounds.left.toDouble(),
+        bounds.top.toDouble(),
+        bounds.width.toDouble(),
+        bounds.height.toDouble(),
+      );
+      const size = 512.0;
+      const pad = 16.0;
+      final drawSize = size - (pad * 2);
+      final scale = min(drawSize / bounds.width, drawSize / bounds.height);
+      final scaledW = bounds.width * scale;
+      final scaledH = bounds.height * scale;
+      final dx = (size - scaledW) / 2.0;
+      final dy = (size - scaledH) / 2.0;
+
+      for (int i = 0; i < frameCount; i++) {
+        final progress = i / (frameCount - 1);
+        drawable.setProgress(progress);
+
+        final recorder = ui.PictureRecorder();
+        final canvas = Canvas(recorder);
+        canvas.save();
+        canvas.translate(dx, dy);
+        canvas.scale(scale, scale);
+        drawable.draw(canvas, drawRect);
+        canvas.restore();
+
+        final picture = recorder.endRecording();
+        final uiImg = await picture.toImage(512, 512);
+        final byteData = await uiImg.toByteData(format: ui.ImageByteFormat.png);
+        if (byteData != null) {
+          frames.add(byteData.buffer.asUint8List());
+        }
+      }
+
+      if (frames.isNotEmpty) {
+        return await _createAnimatedWebpFromPngFrames(frames, outputPath);
+      }
+    } catch (_) {
+      // Fallback
+    }
+
+    if (fallbackThumbnailBytes != null && fallbackThumbnailBytes.isNotEmpty) {
+      return await processImageBytes(
+        fallbackThumbnailBytes,
+        outputDir,
+        outputName,
+        asAnimated: true,
+      );
+    }
+
+    throw Exception('Lottie çıkartma çözülemedi: $tgsPath');
+  }
+
+  /// Processes raw image bytes into a 512x512 WebP sticker.
+  Future<String> processImageBytes(
+    Uint8List bytes,
+    String outputDir,
+    String outputName, {
+    bool asAnimated = false,
+  }) async {
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      throw Exception('Görsel çözülemedi');
+    }
+    final availableSize = _whatsappSize - (_padding * 2);
+    final resized = _fitImage(decoded, availableSize);
+
+    final canvas = img.Image(
+      width: _whatsappSize,
+      height: _whatsappSize,
+      numChannels: 4,
+    );
+    final offsetX = (_whatsappSize - resized.width) ~/ 2;
+    final offsetY = (_whatsappSize - resized.height) ~/ 2;
+    img.compositeImage(canvas, resized, dstX: offsetX, dstY: offsetY);
+
+    final outputPath = p.join(outputDir, outputName);
+
+    if (asAnimated) {
+      canvas.frameDuration = 500;
+      canvas.loopCount = 0;
+      final secondFrame = img.Image(
+        width: _whatsappSize,
+        height: _whatsappSize,
+        numChannels: 4,
+      );
+      img.compositeImage(secondFrame, resized, dstX: offsetX, dstY: offsetY);
+      secondFrame.frameDuration = 500;
+      canvas.frames.add(secondFrame);
+
+      final webpBytes = Uint8List.fromList(
+        img.encodeWebP(canvas, lossless: false, quality: 80),
+      );
+      await File(outputPath).writeAsBytes(webpBytes);
+      return outputPath;
+    }
+
+    Uint8List webpBytes = Uint8List.fromList(
+      img.WebPEncoder(lossless: true).encode(canvas),
+    );
+    if (webpBytes.length > _maxStaticKb * 1024) {
+      webpBytes = Uint8List.fromList(
+        img.WebPEncoder(lossless: false, quality: 85).encode(canvas),
+      );
+    }
+    await File(outputPath).writeAsBytes(webpBytes);
+    return outputPath;
+  }
+
+  /// Converts a list of image frames (PNG or JPEG) into a compliant 512x512 Animated WebP.
   Future<String> _createAnimatedWebpFromPngFrames(
     List<Uint8List> pngFrames,
     String outputPath, {
     int frameDelayMs = 83, // ~12 fps
   }) async {
-    final firstDecoded = img.decodePng(pngFrames.first);
+    final firstDecoded = img.decodeImage(pngFrames.first);
     if (firstDecoded == null) {
       throw Exception('İlk kare çözülemedi');
     }
@@ -75,7 +218,7 @@ class StickerProcessor {
     baseCanvas.loopCount = 0; // Infinite loop
 
     for (int i = 1; i < pngFrames.length; i++) {
-      final decodedFrame = img.decodePng(pngFrames[i]);
+      final decodedFrame = img.decodeImage(pngFrames[i]);
       if (decodedFrame == null) continue;
 
       final frameCanvas = img.Image(
