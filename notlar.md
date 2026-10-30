@@ -4,7 +4,17 @@
 
 ## 🇹🇷 Türkçe (Turkish)
 
-### 1. Hareketli Çıkartmaların WhatsApp'ta Statik Kalması
+### 1. WhatsApp'tan Paketi Kaldırırken "Paket Dosyası Mevcut Değil" Hatası (1. ÖNCELİK)
+- **Durum:** 🚨 **1. ÖNCELİK / İnceleniyor**
+- **Sorun:** Çıkartma paketi WhatsApp'a sorunsuz eklendikten sonra, kullanıcı paketi WhatsApp içerisinden ("Çıkartmalarım" sekmesi veya çıkartma tepsisi üzerinden) silmek/kaldırmak istediğinde WhatsApp *"Paket dosyası mevcut değil"* (veya benzeri bir provider/dosya bulunamadı) hatası vermektedir.
+- **Olası Nedenler & Yapılacaklar:**
+  - `StickerContentProvider.kt` içerisinde `delete` endpoint'i ve URI pattern'leri incelenmeli (WhatsApp silme işlemi sırasında `ContentProvider.delete(...)` çağrısı yapıyor olabilir veya `UnsupportedOperationException` yerine uygun `delete` yanıtı bekliyor olabilir).
+  - WhatsApp'ın paket detay ekranını açarken veya silme sorgusu yaparken çağırdığı URI rotaları (`metadata`, `stickers`, `delete`) ve döviz parametreleri tespit edilmeli.
+  - Paket kaldırıldığında yerel `StickerPackStorage` ile senkronizasyon sağlanmalı; WhatsApp'ın beklediği HTTP/ContentProvider durum kodları ve AssetFileDescriptor akışı eksiksiz desteklenmeli.
+
+---
+
+### 2. Hareketli Çıkartmaların WhatsApp'ta Statik Kalması
 - **Durum:** ⏳ Beklemede / İncelenecek
 - **Sorun:** Çıkartmalar uygulama içi önizlemede canlı ve hareketli olarak oynatılabildiği halde, WhatsApp'a aktarıldıktan sonra WhatsApp sohbetinde statik/hareketsiz olarak kalmaktadır.
 - **Yapılacaklar:**
@@ -13,7 +23,7 @@
 
 ---
 
-### 2. Çok Parçalı Paketlerde Sonsuz Döngü / Askıda Kalma Sorunu
+### 3. Çok Parçalı Paketlerde Sonsuz Döngü / Askıda Kalma Sorunu
 - **Durum:** ✅ **ÇÖZÜLDÜ & DOĞRULANDI** (Sorun Çözüldü)
 - **Test Sonucu:** Android 16 (crDroid 12.13, KernelSU root) fiziksel cihaz üzerinde ADB ile canlı olarak test edilmiş; çok parçalı paketlerin parçalara ayrılması, her bir parçanın WhatsApp'a eklenmesi ve kullanıcı kontrollü bir sonraki parçaya geçiş adımlarının sorunsuz çalıştığı doğrulanmıştır.
 - **Tespit Edilen Kök Neden:**
@@ -29,7 +39,7 @@
 
 ---
 
-### 3. Sade & Kurumsal Tasarım (Neon ve Liquid Glass Efektlerinin Kaldırılması)
+### 4. Sade & Kurumsal Tasarım (Neon ve Liquid Glass Efektlerinin Kaldırılması)
 - **Durum:** ✅ **YAPILDI** (Tamamlandı)
 - **Yapılan İyileştirmeler:**
   - `AppTheme`: Neon/aşırı parlak tonlar kaldırılarak göz yormayan dengeli, modern kurumsal renk paletine (Slate 50 - 900, dengeli kurumsal mavi tonları `Color(0xFF2563EB)`) geçildi.
@@ -39,7 +49,7 @@
 
 ---
 
-### 4. Sürüm Numaralandırma Kuralı (Version Increment)
+### 5. Sürüm Numaralandırma Kuralı (Version Increment)
 - **Durum:** ✅ **UYGULANDI**
 - **Açıklama:** Çok parçalı WhatsApp aktarım motoru ve yerel ContentProvider güncellemesi ile `pubspec.yaml` sürümü güncellendi:
   - `1.0.1+2` ➡️ `1.0.2+3` olarak artırıldı.
@@ -49,7 +59,17 @@
 
 ## 🇬🇧 English
 
-### 1. Animated Stickers Appearing Static in WhatsApp
+### 1. "Sticker Pack File Does Not Exist" Error on Deleting Pack from WhatsApp (TOP PRIORITY)
+- **Status:** 🚨 **TOP PRIORITY / Under Investigation**
+- **Issue:** After a sticker pack is successfully added to WhatsApp, when the user tries to delete/remove the pack from inside WhatsApp (via the "My Stickers" tab or sticker tray), WhatsApp throws a *"Sticker pack file does not exist"* (or file/provider not found) error.
+- **Probable Causes & Action Items:**
+  - Investigate `StickerContentProvider.kt` implementation for `delete` endpoint and URI patterns (WhatsApp might invoke `ContentProvider.delete(...)` during removal or expect proper handling instead of `UnsupportedOperationException`).
+  - Verify WhatsApp's queried URI routes (`metadata`, `stickers`, `delete`) and parameters when deleting or inspecting packs.
+  - Ensure proper synchronization with `StickerPackStorage` and verify file descriptors.
+
+---
+
+### 2. Animated Stickers Appearing Static in WhatsApp
 - **Status:** ⏳ Pending / To Do
 - **Issue:** Even though animated stickers animate properly in the in-app preview player, they remain completely motionless/static once imported into WhatsApp.
 - **Action Items:**
@@ -58,7 +78,7 @@
 
 ---
 
-### 2. Multi-Part Pack Export Infinite Loop / Freeze
+### 3. Multi-Part Pack Export Infinite Loop / Freeze
 - **Status:** ✅ **RESOLVED & VERIFIED** (Issue Fixed)
 - **Test Results:** Live tested on Android 16 physical device (crDroid 12.13, KernelSU root) via ADB; verified that multi-part pack splitting, WhatsApp intent callbacks, and user-guided sequential part importing function flawlessly without freezes.
 - **Identified Root Cause:**
@@ -73,7 +93,7 @@
 
 ---
 
-### 3. Clean & Corporate UI (Eliminate Neon Colors & Liquid Glass)
+### 4. Clean & Corporate UI (Eliminate Neon Colors & Liquid Glass)
 - **Status:** ✅ **DONE** (Completed)
 - **Completed Improvements:**
   - `AppTheme`: Neon / overly saturated vibrant colors replaced with a balanced, corporate slate palette and professional blues.
@@ -83,7 +103,7 @@
 
 ---
 
-### 4. Application Versioning Rule
+### 5. Application Versioning Rule
 - **Status:** ✅ **APPLIED**
 - **Note:** Following the native multi-part WhatsApp export engine upgrade, `pubspec.yaml` was incremented:
   - `1.0.1+2` ➡️ `1.0.2+3`.
