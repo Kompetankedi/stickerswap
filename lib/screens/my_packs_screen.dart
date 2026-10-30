@@ -68,40 +68,71 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
       for (int i = 0; i < pack.stickerPaths.length; i++) {
         stickerData.add({
           'path': pack.stickerPaths[i],
-          'emojis': [
-            i < pack.emojis.length ? pack.emojis[i] : '⭐',
-          ],
+          'emojis': [i < pack.emojis.length ? pack.emojis[i] : '⭐'],
         });
       }
 
-      await _whatsappService.addStickerPack(
+      final result = await _whatsappService.addStickerPack(
         identifier: pack.identifier,
         name: pack.name,
         publisher: pack.publisher,
         trayPath: pack.trayImagePath,
         stickerData: stickerData,
+        animatedStickerPack: pack.isAnimated,
       );
 
-      await _storageService.updatePackStatus(pack.identifier, true);
-      _loadPacks();
+      if (result.isAdded) {
+        await _storageService.updatePackStatus(pack.identifier, true);
+        _loadPacks();
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('✅ WhatsApp\'a yeniden eklendi!'),
-            backgroundColor: AppTheme.success,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('✅ WhatsApp\'a yeniden eklendi!'),
+              backgroundColor: AppTheme.success,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
-          ),
-        );
+          );
+        }
+      } else if (result.isCancelled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('WhatsApp\'a ekleme iptal edildi.'),
+              backgroundColor: AppTheme.textMuted,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Hata: ${result.errorMessage ?? 'Eklenemedi'}',
+              ),
+              backgroundColor: AppTheme.error,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Hata: ${e.toString().replaceAll('Exception: ', '')}'),
+            content: Text(
+              'Hata: ${e.toString().replaceAll('Exception: ', '')}',
+            ),
             backgroundColor: AppTheme.error,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -130,13 +161,14 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('İptal',
-                style: TextStyle(color: AppTheme.textMuted)),
+            child: const Text(
+              'İptal',
+              style: TextStyle(color: AppTheme.textMuted),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child:
-                const Text('Sil', style: TextStyle(color: AppTheme.error)),
+            child: const Text('Sil', style: TextStyle(color: AppTheme.error)),
           ),
         ],
       ),
@@ -155,13 +187,18 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
+        final isDark = AppTheme.isDark(context);
         return Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: AppTheme.surfaceDark,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLightMode,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             border: Border(
-              top: BorderSide(color: Colors.white.withAlpha(20)),
+              top: BorderSide(
+                color: isDark
+                    ? const Color(0xFF334155)
+                    : const Color(0xFFE2E8F0),
+              ),
             ),
           ),
           child: Column(
@@ -171,7 +208,9 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppTheme.textMuted.withAlpha(80),
+                  color: isDark
+                      ? const Color(0xFF475569)
+                      : const Color(0xFFCBD5E1),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -180,8 +219,15 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
                 width: 180,
                 height: 180,
                 decoration: BoxDecoration(
-                  color: AppTheme.backgroundDark,
-                  borderRadius: BorderRadius.circular(20),
+                  color: isDark
+                      ? AppTheme.backgroundDark
+                      : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isDark
+                        ? const Color(0xFF334155)
+                        : const Color(0xFFE2E8F0),
+                  ),
                 ),
                 child: Center(
                   child: file.existsSync()
@@ -217,6 +263,7 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppTheme.isDark(context);
     final filtered = _filteredPacks;
 
     return Scaffold(
@@ -236,8 +283,8 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          gradient: AppTheme.primaryGradient,
-                          borderRadius: BorderRadius.circular(14),
+                          color: AppTheme.primaryBlue,
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
                           Icons.folder_rounded,
@@ -268,10 +315,14 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: AppTheme.surfaceLight,
-                        borderRadius: BorderRadius.circular(12),
+                        color: isDark
+                            ? AppTheme.surfaceDarkElevated
+                            : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: Colors.white.withAlpha(10),
+                          color: isDark
+                              ? const Color(0xFF334155)
+                              : const Color(0xFFE2E8F0),
                         ),
                       ),
                       child: Row(
@@ -294,10 +345,7 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
                       ),
                     ),
                 ],
-              )
-                  .animate()
-                  .fadeIn(duration: 400.ms)
-                  .slideX(begin: -0.04),
+              ).animate().fadeIn(duration: 400.ms).slideX(begin: -0.04),
             ),
 
             const SizedBox(height: 16),
@@ -308,9 +356,13 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: AppTheme.surfaceDark,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white.withAlpha(12)),
+                    color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isDark
+                          ? const Color(0xFF334155)
+                          : const Color(0xFFE2E8F0),
+                    ),
                   ),
                   child: TextField(
                     controller: _searchController,
@@ -360,35 +412,34 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
               child: _packs.isEmpty
                   ? _buildEmptyState()
                   : filtered.isEmpty
-                      ? Center(
-                          child: Text(
-                            '"$_searchQuery" ile eşleşen paket bulunamadı.',
-                            style: TextStyle(
-                              color: AppTheme.textMuted.withAlpha(160),
-                            ),
-                          ),
-                        )
-                      : ListView.separated(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          itemCount: filtered.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final pack = filtered[index];
-                            return _PackCard(
+                  ? Center(
+                      child: Text(
+                        '"$_searchQuery" ile eşleşen paket bulunamadı.',
+                        style: TextStyle(
+                          color: AppTheme.textMuted.withAlpha(160),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final pack = filtered[index];
+                        return _PackCard(
                               pack: pack,
                               onReAdd: () => _reAddToWhatsApp(pack),
                               onDelete: () => _deletePack(pack),
                               onStickerTap: _showStickerPreviewModal,
                             )
-                                .animate()
-                                .fadeIn(
-                                  delay: Duration(milliseconds: 70 * index),
-                                  duration: 350.ms,
-                                )
-                                .slideY(begin: 0.04);
-                          },
-                        ),
+                            .animate()
+                            .fadeIn(
+                              delay: Duration(milliseconds: 70 * index),
+                              duration: 350.ms,
+                            )
+                            .slideY(begin: 0.04);
+                      },
+                    ),
             ),
           ],
         ),
@@ -398,56 +449,53 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceLight,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: const Icon(
-              Icons.folder_off_rounded,
-              size: 36,
-              color: AppTheme.textMuted,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceLight,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Icon(
+                  Icons.folder_off_rounded,
+                  size: 36,
+                  color: AppTheme.textMuted,
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Henüz kaydedilmiş paket yok',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Telegram çıkartmalarınızı aktardığınızda\nburada listelenecektir.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+              ),
+              if (widget.onNavigateToExplore != null) ...[
+                const SizedBox(height: 20),
+                GradientButton(
+                  text: 'Çıkartma Keşfet',
+                  icon: Icons.explore_rounded,
+                  height: 44,
+                  gradient: AppTheme.telegramGradient,
+                  onPressed: widget.onNavigateToExplore,
+                ),
+              ],
+            ],
           ),
-          const SizedBox(height: 20),
-          const Text(
-            'Henüz kaydedilmiş paket yok',
-            style: TextStyle(
-              color: AppTheme.textPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Telegram çıkartmalarınızı aktardığınızda\nburada listelenecektir.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppTheme.textMuted,
-              fontSize: 13,
-            ),
-          ),
-          if (widget.onNavigateToExplore != null) ...[
-            const SizedBox(height: 20),
-            GradientButton(
-              text: 'Çıkartma Keşfet',
-              icon: Icons.explore_rounded,
-              height: 44,
-              gradient: AppTheme.telegramGradient,
-              onPressed: widget.onNavigateToExplore,
-            ),
-          ],
-        ],
-      ),
-    ).animate().fadeIn(duration: 500.ms).scale(
-          begin: const Offset(0.9, 0.9),
-          curve: Curves.easeOutBack,
-        );
+        )
+        .animate()
+        .fadeIn(duration: 500.ms)
+        .scale(begin: const Offset(0.9, 0.9), curve: Curves.easeOutBack);
   }
 }
 
@@ -466,6 +514,7 @@ class _PackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppTheme.isDark(context);
     final trayFile = File(pack.trayImagePath);
     final hasTray = trayFile.existsSync();
 
@@ -480,11 +529,18 @@ class _PackCard extends StatelessWidget {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: AppTheme.backgroundDark,
-                  borderRadius: BorderRadius.circular(14),
+                  color: isDark
+                      ? AppTheme.surfaceDarkElevated
+                      : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isDark
+                        ? const Color(0xFF334155)
+                        : const Color(0xFFE2E8F0),
+                  ),
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(10),
                   child: hasTray
                       ? Image.file(trayFile, fit: BoxFit.contain)
                       : const Icon(
@@ -572,11 +628,18 @@ class _PackCard extends StatelessWidget {
                       width: 52,
                       height: 52,
                       decoration: BoxDecoration(
-                        color: AppTheme.backgroundDark,
-                        borderRadius: BorderRadius.circular(10),
+                        color: isDark
+                            ? AppTheme.surfaceDarkElevated
+                            : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isDark
+                              ? const Color(0xFF334155)
+                              : const Color(0xFFE2E8F0),
+                        ),
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(8),
                         child: file.existsSync()
                             ? Image.file(file, fit: BoxFit.contain)
                             : Center(
@@ -616,9 +679,7 @@ class _PackCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: AppTheme.error.withAlpha(20),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppTheme.error.withAlpha(50),
-                    ),
+                    border: Border.all(color: AppTheme.error.withAlpha(50)),
                   ),
                   child: const Icon(
                     Icons.delete_outline_rounded,

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-/// A sleek card that adapts automatically to Light and Dark themes.
+/// Düz, net, minimalist ve kurumsal kart bileşeni.
+/// Liquid glass, bulanıklık ve neon efektleri tamamen kaldırılmıştır.
 class GlassCard extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
@@ -29,7 +30,7 @@ class GlassCard extends StatelessWidget {
         height: height,
         padding: padding,
         decoration: BoxDecoration(
-          gradient: AppTheme.getCardGrad(context),
+          color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
           borderRadius: AppTheme.cardRadius,
           border: AppTheme.getBorder(context),
           boxShadow: isDark ? null : AppTheme.lightCardShadow,
@@ -39,3 +40,6 @@ class GlassCard extends StatelessWidget {
     );
   }
 }
+
+/// Kurumsal kart takma adı (alias)
+typedef CorporateCard = GlassCard;

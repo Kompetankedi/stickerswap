@@ -31,7 +31,9 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Future<void> _handleInitialSharedText() async {
     try {
-      final sharedText = await _channel.invokeMethod<String>('getInitialSharedText');
+      final sharedText = await _channel.invokeMethod<String>(
+        'getInitialSharedText',
+      );
       if (sharedText != null && sharedText.isNotEmpty) {
         // Give the widget tree a frame to build
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -75,10 +77,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
         controller: _pageController,
         physics: const NeverScrollableScrollPhysics(),
         children: [
-          HomeScreen(
-            key: homeKey,
-            onNavigateToSettings: () => _onTabTapped(2),
-          ),
+          HomeScreen(key: homeKey, onNavigateToSettings: () => _onTabTapped(2)),
           MyPacksScreen(onNavigateToExplore: () => _onTabTapped(0)),
           const SettingsScreen(),
         ],
@@ -89,7 +88,7 @@ class MainNavigationScreenState extends State<MainNavigationScreen> {
           border: Border(
             top: BorderSide(
               color: AppTheme.isDark(context)
-                  ? Colors.white.withAlpha(15)
+                  ? const Color(0xFF334155)
                   : const Color(0xFFE2E8F0),
               width: 1,
             ),

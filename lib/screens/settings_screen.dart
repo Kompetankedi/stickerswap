@@ -172,7 +172,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final secCol = AppTheme.getTextSec(context);
     final mutCol = AppTheme.getTextMut(context);
     final inputBg = isDark ? AppTheme.backgroundDark : const Color(0xFFF1F5F9);
-    final borderCol = isDark ? Colors.white.withAlpha(15) : const Color(0xFFCBD5E1);
+    final borderCol = isDark
+        ? const Color(0xFF334155)
+        : const Color(0xFFCBD5E1);
 
     return Scaffold(
       backgroundColor: AppTheme.getBackground(context),
@@ -190,8 +192,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      gradient: AppTheme.primaryGradient,
-                      borderRadius: BorderRadius.circular(14),
+                      color: AppTheme.primaryBlue,
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(
                       Icons.settings_rounded,
@@ -209,10 +211,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ],
-              )
-                  .animate()
-                  .fadeIn(duration: 400.ms)
-                  .slideX(begin: -0.04),
+              ).animate().fadeIn(duration: 400.ms).slideX(begin: -0.04),
 
               const SizedBox(height: 24),
 
@@ -229,10 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Text(
                       'Gözü yormayan, sade ve modern 2 tema seçeneği:',
-                      style: TextStyle(
-                        color: secCol,
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: secCol, fontSize: 13),
                     ),
                     const SizedBox(height: 14),
                     Row(
@@ -241,25 +237,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Expanded(
                           child: InkWell(
                             onTap: () {
-                              ThemeController.instance
-                                  .setTheme(ThemeMode.dark, _storageService);
+                              ThemeController.instance.setTheme(
+                                ThemeMode.dark,
+                                _storageService,
+                              );
                             },
                             borderRadius: BorderRadius.circular(14),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF090D16),
-                                borderRadius: BorderRadius.circular(14),
+                                color: const Color(0xFF0F172A),
+                                borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: isDark
                                       ? AppTheme.primaryBlue
-                                      : Colors.white.withAlpha(20),
+                                      : const Color(0xFF334155),
                                   width: isDark ? 2 : 1,
                                 ),
-                                boxShadow: isDark
-                                    ? AppTheme.glowShadow(AppTheme.primaryBlue, blur: 12)
-                                    : null,
                               ),
                               child: Column(
                                 children: [
@@ -308,8 +303,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Expanded(
                           child: InkWell(
                             onTap: () {
-                              ThemeController.instance
-                                  .setTheme(ThemeMode.light, _storageService);
+                              ThemeController.instance.setTheme(
+                                ThemeMode.light,
+                                _storageService,
+                              );
                             },
                             borderRadius: BorderRadius.circular(14),
                             child: AnimatedContainer(
@@ -317,21 +314,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFF8FAFC),
-                                borderRadius: BorderRadius.circular(14),
+                                borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: !isDark
                                       ? AppTheme.primaryBlue
                                       : const Color(0xFFCBD5E1),
                                   width: !isDark ? 2 : 1,
                                 ),
-                                boxShadow: !isDark
-                                    ? [
-                                        BoxShadow(
-                                          color: AppTheme.primaryBlue.withAlpha(40),
-                                          blurRadius: 12,
-                                        ),
-                                      ]
-                                    : null,
                               ),
                               child: Column(
                                 children: [
@@ -424,8 +413,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             _isWhatsAppInstalled == true
                                 ? 'WhatsApp cihazınızda yüklü ve hazır'
                                 : _isWhatsAppInstalled == false
-                                    ? 'WhatsApp bulunamadı'
-                                    : 'Durum kontrol ediliyor...',
+                                ? 'WhatsApp bulunamadı'
+                                : 'Durum kontrol ediliyor...',
                             style: TextStyle(
                               color: _isWhatsAppInstalled == true
                                   ? AppTheme.success
@@ -465,10 +454,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Text(
                       'Kendi ücretsiz Telegram botunuzu kullanarak çıkartmaları sınırsızca indirin.',
-                      style: TextStyle(
-                        color: secCol,
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: secCol, fontSize: 13),
                     ),
                     const SizedBox(height: 14),
                     Container(
@@ -576,7 +562,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             height: 44,
                             padding: const EdgeInsets.symmetric(horizontal: 14),
                             decoration: BoxDecoration(
-                              color: isDark ? AppTheme.surfaceDarkElevated : const Color(0xFFEFF6FF),
+                              color: isDark
+                                  ? AppTheme.surfaceDarkElevated
+                                  : const Color(0xFFEFF6FF),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
                                 color: AppTheme.primaryBlue.withAlpha(40),
@@ -623,10 +611,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Text(
                       'WhatsApp çıkartma tepsisinde görünecek yazar adı.',
-                      style: TextStyle(
-                        color: secCol,
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: secCol, fontSize: 13),
                     ),
                     const SizedBox(height: 14),
                     Row(
@@ -640,10 +625,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                             child: TextField(
                               controller: _publisherController,
-                              style: TextStyle(
-                                color: textCol,
-                                fontSize: 14,
-                              ),
+                              style: TextStyle(color: textCol, fontSize: 14),
                               decoration: InputDecoration(
                                 hintText: 'StickerSwap',
                                 hintStyle: TextStyle(
@@ -724,10 +706,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SizedBox(height: 2),
                           Text(
                             StorageService.formatBytes(_cacheSizeBytes),
-                            style: TextStyle(
-                              color: mutCol,
-                              fontSize: 12,
-                            ),
+                            style: TextStyle(color: mutCol, fontSize: 12),
                           ),
                         ],
                       ),
@@ -778,12 +757,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
               GlassCard(
                 child: Column(
                   children: [
-                    _AboutRow(label: 'Uygulama', value: 'StickerSwap', textCol: textCol, secCol: secCol),
-                    Divider(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0), height: 20),
-                    _AboutRow(label: 'Sürüm', value: '1.0.0+1', textCol: textCol, secCol: secCol),
-                    Divider(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0), height: 20),
-                    _AboutRow(label: 'Platform', value: 'Android (Flutter)', textCol: textCol, secCol: secCol),
-                    Divider(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0), height: 20),
+                    _AboutRow(
+                      label: 'Uygulama',
+                      value: 'StickerSwap',
+                      textCol: textCol,
+                      secCol: secCol,
+                    ),
+                    Divider(
+                      color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                      height: 20,
+                    ),
+                    _AboutRow(
+                      label: 'Sürüm',
+                      value: '1.0.1+2',
+                      textCol: textCol,
+                      secCol: secCol,
+                    ),
+                    Divider(
+                      color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                      height: 20,
+                    ),
+                    _AboutRow(
+                      label: 'Platform',
+                      value: 'Android (Flutter)',
+                      textCol: textCol,
+                      secCol: secCol,
+                    ),
+                    Divider(
+                      color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                      height: 20,
+                    ),
                     Row(
                       children: [
                         const Icon(
@@ -795,10 +798,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Expanded(
                           child: Text(
                             'Resmi WhatsApp Çıkartma API ve Telegram Bot API standartlarına %100 uygundur.',
-                            style: TextStyle(
-                              color: secCol,
-                              fontSize: 12,
-                            ),
+                            style: TextStyle(color: secCol, fontSize: 12),
                           ),
                         ),
                       ],
@@ -865,13 +865,7 @@ class _AboutRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: secCol,
-            fontSize: 13,
-          ),
-        ),
+        Text(label, style: TextStyle(color: secCol, fontSize: 13)),
         Text(
           value,
           style: TextStyle(

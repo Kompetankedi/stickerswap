@@ -64,7 +64,9 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Telegram açılamadı. @BotFather aratabilirsiniz.')),
+          const SnackBar(
+            content: Text('Telegram açılamadı. @BotFather aratabilirsiniz.'),
+          ),
         );
       }
     }
@@ -96,14 +98,16 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
       setState(() {
         _isTesting = false;
         _isSuccess = true;
-        _statusMessage = 'Harika! @$botUser botu başarıyla doğrulandı ve kaydedildi.';
+        _statusMessage =
+            'Harika! @$botUser botu başarıyla doğrulandı ve kaydedildi.';
       });
       widget.onTokenSaved?.call();
     } else {
       setState(() {
         _isTesting = false;
         _isSuccess = false;
-        _statusMessage = 'Geçersiz token. Lütfen BotFather\'dan aldığınız tokenı kontrol edin.';
+        _statusMessage =
+            'Geçersiz token. Lütfen BotFather\'dan aldığınız tokenı kontrol edin.';
       });
     }
   }
@@ -112,18 +116,24 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
   Widget build(BuildContext context) {
     final isDark = AppTheme.isDark(context);
     final bgColor = isDark ? AppTheme.surfaceDark : Colors.white;
-    final textCol = isDark ? AppTheme.textPrimaryDark : AppTheme.textPrimaryLight;
-    final secCol = isDark ? AppTheme.textSecondaryDark : AppTheme.textSecondaryLight;
-    final stepBg = isDark ? AppTheme.surfaceDarkElevated : const Color(0xFFEFF6FF);
+    final textCol = isDark
+        ? AppTheme.textPrimaryDark
+        : AppTheme.textPrimaryLight;
+    final secCol = isDark
+        ? AppTheme.textSecondaryDark
+        : AppTheme.textSecondaryLight;
+    final stepBg = isDark
+        ? AppTheme.surfaceDarkElevated
+        : const Color(0xFFEFF6FF);
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.88,
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         border: Border(
           top: BorderSide(
-            color: isDark ? Colors.white.withAlpha(25) : const Color(0xFFE2E8F0),
+            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
           ),
         ),
       ),
@@ -176,10 +186,7 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                       const SizedBox(height: 2),
                       Text(
                         '1 dakikada ücretsiz kendi botunuzu kurun',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: secCol,
-                        ),
+                        style: TextStyle(fontSize: 13, color: secCol),
                       ),
                     ],
                   ),
@@ -217,7 +224,10 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
                     ),
                   ),
                 ),
@@ -226,8 +236,7 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                 _buildStep(
                   step: 2,
                   title: '/newbot Komutunu Gönderin',
-                  description:
-                      'BotFather sohbetine /newbot yazıp gönderin.',
+                  description: 'BotFather sohbetine /newbot yazıp gönderin.',
                   stepBg: stepBg,
                   textCol: textCol,
                   secCol: secCol,
@@ -240,16 +249,25 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                     },
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: isDark ? Colors.black38 : Colors.white,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppTheme.primaryBlue.withAlpha(60)),
+                        border: Border.all(
+                          color: AppTheme.primaryBlue.withAlpha(60),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.copy_rounded, size: 14, color: AppTheme.primaryBlue),
+                          const Icon(
+                            Icons.copy_rounded,
+                            size: 14,
+                            color: AppTheme.primaryBlue,
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             '/newbot',
@@ -308,7 +326,9 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF151E32) : const Color(0xFFF1F5F9),
+                    color: isDark
+                        ? const Color(0xFF151E32)
+                        : const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: _isSuccess
@@ -322,9 +342,13 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                       Row(
                         children: [
                           Icon(
-                            _isSuccess ? Icons.check_circle_rounded : Icons.key_rounded,
+                            _isSuccess
+                                ? Icons.check_circle_rounded
+                                : Icons.key_rounded,
                             size: 18,
-                            color: _isSuccess ? AppTheme.success : AppTheme.primaryBlue,
+                            color: _isSuccess
+                                ? AppTheme.success
+                                : AppTheme.primaryBlue,
                           ),
                           const SizedBox(width: 8),
                           Text(
@@ -340,33 +364,54 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                       const SizedBox(height: 12),
                       TextField(
                         controller: _tokenController,
-                        style: TextStyle(color: textCol, fontSize: 13, fontFamily: 'monospace'),
+                        style: TextStyle(
+                          color: textCol,
+                          fontSize: 13,
+                          fontFamily: 'monospace',
+                        ),
                         decoration: InputDecoration(
                           hintText: '123456789:ABCdefGHIjklmno...',
-                          hintStyle: TextStyle(color: secCol.withAlpha(120), fontSize: 13),
+                          hintStyle: TextStyle(
+                            color: secCol.withAlpha(120),
+                            fontSize: 13,
+                          ),
                           filled: true,
-                          fillColor: isDark ? AppTheme.surfaceDark : Colors.white,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          fillColor: isDark
+                              ? AppTheme.surfaceDark
+                              : Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide(
-                              color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                              color: isDark
+                                  ? Colors.white12
+                                  : const Color(0xFFE2E8F0),
                             ),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide(
-                              color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                              color: isDark
+                                  ? Colors.white12
+                                  : const Color(0xFFE2E8F0),
                             ),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: AppTheme.primaryBlue, width: 1.5),
+                            borderSide: const BorderSide(
+                              color: AppTheme.primaryBlue,
+                              width: 1.5,
+                            ),
                           ),
                           suffixIcon: IconButton(
                             icon: const Icon(Icons.paste_rounded, size: 20),
                             onPressed: () async {
-                              final data = await Clipboard.getData(Clipboard.kTextPlain);
+                              final data = await Clipboard.getData(
+                                Clipboard.kTextPlain,
+                              );
                               if (data?.text != null) {
                                 _tokenController.text = data!.text!.trim();
                               }
@@ -379,9 +424,13 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                         Row(
                           children: [
                             Icon(
-                              _isSuccess ? Icons.check_circle : Icons.error_outline,
+                              _isSuccess
+                                  ? Icons.check_circle
+                                  : Icons.error_outline,
                               size: 16,
-                              color: _isSuccess ? AppTheme.success : AppTheme.error,
+                              color: _isSuccess
+                                  ? AppTheme.success
+                                  : AppTheme.error,
                             ),
                             const SizedBox(width: 6),
                             Expanded(
@@ -389,7 +438,9 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                                 _statusMessage!,
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: _isSuccess ? AppTheme.success : AppTheme.error,
+                                  color: _isSuccess
+                                      ? AppTheme.success
+                                      : AppTheme.error,
                                 ),
                               ),
                             ),
@@ -417,15 +468,16 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.shield_outlined, size: 18, color: AppTheme.primaryBlue),
+                      const Icon(
+                        Icons.shield_outlined,
+                        size: 18,
+                        color: AppTheme.primaryBlue,
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           'Tokenınız tamamen kendi cihazınızda saklanır ve doğrudan Telegram API ile haberleşir.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: secCol,
-                          ),
+                          style: TextStyle(fontSize: 12, color: secCol),
                         ),
                       ),
                     ],
@@ -486,16 +538,9 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                 const SizedBox(height: 4),
                 Text(
                   description,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: secCol,
-                    height: 1.35,
-                  ),
+                  style: TextStyle(fontSize: 12, color: secCol, height: 1.35),
                 ),
-                if (action != null) ...[
-                  const SizedBox(height: 8),
-                  action,
-                ],
+                if (action != null) ...[const SizedBox(height: 8), action],
               ],
             ),
           ),

@@ -1,10 +1,29 @@
-import 'package:whatsapp_stickers_handler/whatsapp_stickers_handler.dart';
-import 'package:whatsapp_stickers_handler/model/sticker_pack.dart';
+import 'package:flutter/services.dart';
+
+enum WhatsAppExportStatus {
+  added,
+  cancelled,
+  error,
+}
+
+class WhatsAppExportResult {
+  final WhatsAppExportStatus status;
+  final String? errorMessage;
+
+  const WhatsAppExportResult({
+    required this.status,
+    this.errorMessage,
+  });
+
+  bool get isAdded => status == WhatsAppExportStatus.added;
+  bool get isCancelled => status == WhatsAppExportStatus.cancelled;
+  bool get isError => status == WhatsAppExportStatus.error;
+}
 
 /// Handles adding sticker packs to WhatsApp through the official
 /// WhatsApp Stickers third-party API / Content Provider mechanism.
 class WhatsAppService {
-  final WhatsappStickersHandler _handler = WhatsappStickersHandler();
+  static const MethodChannel _channel = MethodChannel('com.example.stickerswap/whatsapp');
 
   /// Sanitizes text to strictly match Android WhatsApp Stickers Validator:
   /// Pattern: [\\w-.,'\\s]+ (ASCII word chars, dash, dot, comma, apostrophe, space)
@@ -59,7 +78,7 @@ class WhatsAppService {
   /// [publisher]  – publisher / author name
   /// [trayPath]   – absolute path to 96x96 PNG tray icon
   /// [stickerData]– list of maps with 'path' and 'emojis' keys
-  Future<bool> addStickerPack({
+  Future<WhatsAppExportResult> addStickerPack({
     required String identifier,
     required String name,
     required String publisher,
@@ -83,35 +102,56 @@ class WhatsAppService {
       );
     }
 
-    final stickers = stickerData.map((d) => d['path'] as String).toList();
-
     // Sanitize strings to avoid Android StickerPackValidator rejection
     final safeIdentifier = sanitizeIdentifier(identifier);
     final safeName = sanitizeForWhatsApp(name, fallback: 'Sticker Pack');
     final safePublisher = sanitizeForWhatsApp(publisher, fallback: 'StickerSwap');
 
-    final pack = StickerPack(
-      identifier: safeIdentifier,
-      name: safeName,
-      publisher: safePublisher,
-      trayImage: trayPath,
-      stickers: stickers,
-      animatedStickerPack: animatedStickerPack,
-    );
+    final payload = {
+      'identifier': safeIdentifier,
+      'name': safeName,
+      'publisher': safePublisher,
+      'trayImage': trayPath,
+      'stickers': stickerData,
+      'animatedStickerPack': animatedStickerPack,
+    };
 
     try {
-      await _handler.addStickerPack(pack);
-      return true;
+      final res = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+        'addStickerPack',
+        payload,
+      );
+
+      final statusStr = res?['status'] as String? ?? 'unknown';
+      if (statusStr == 'added') {
+        return const WhatsAppExportResult(status: WhatsAppExportStatus.added);
+      } else if (statusStr == 'cancelled') {
+        return const WhatsAppExportResult(status: WhatsAppExportStatus.cancelled);
+      } else {
+        final errorMsg = res?['error'] as String? ?? 'Bilinmeyen aktarım hatası';
+        return WhatsAppExportResult(
+          status: WhatsAppExportStatus.error,
+          errorMessage: errorMsg,
+        );
+      }
+    } on PlatformException catch (e) {
+      return WhatsAppExportResult(
+        status: WhatsAppExportStatus.error,
+        errorMessage: e.message ?? e.code,
+      );
     } catch (e) {
-      final msg = e.toString().replaceAll('Exception: ', '').trim();
-      throw Exception('WhatsApp aktarım hatası: $msg');
+      return WhatsAppExportResult(
+        status: WhatsAppExportStatus.error,
+        errorMessage: e.toString().replaceAll('Exception: ', '').trim(),
+      );
     }
   }
 
   /// Checks whether WhatsApp is installed on the device.
   Future<bool> isWhatsAppInstalled() async {
     try {
-      return await _handler.isWhatsAppInstalled;
+      final result = await _channel.invokeMethod<bool>('isWhatsAppInstalled');
+      return result ?? false;
     } catch (_) {
       return false;
     }
@@ -120,7 +160,11 @@ class WhatsAppService {
   /// Checks whether a specific pack is already installed.
   Future<bool> isPackInstalled(String identifier) async {
     try {
-      return await _handler.isStickerPackInstalled(sanitizeIdentifier(identifier));
+      final result = await _channel.invokeMethod<bool>(
+        'isPackInstalled',
+        {'identifier': sanitizeIdentifier(identifier)},
+      );
+      return result ?? false;
     } catch (_) {
       return false;
     }

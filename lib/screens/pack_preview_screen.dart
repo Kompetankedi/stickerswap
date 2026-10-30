@@ -80,7 +80,9 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
 
     for (int i = 0; i < stickers.length; i += batchSize) {
       if (!mounted) break;
-      final end = (i + batchSize < stickers.length) ? i + batchSize : stickers.length;
+      final end = (i + batchSize < stickers.length)
+          ? i + batchSize
+          : stickers.length;
       final batch = stickers.sublist(i, end);
 
       final futures = batch.map((sticker) async {
@@ -170,13 +172,22 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            final isDark = AppTheme.isDark(context);
             return Container(
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
               decoration: BoxDecoration(
-                color: AppTheme.surfaceDark,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                color: isDark
+                    ? AppTheme.surfaceDark
+                    : AppTheme.surfaceLightMode,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
                 border: Border(
-                  top: BorderSide(color: Colors.white.withAlpha(20)),
+                  top: BorderSide(
+                    color: isDark
+                        ? const Color(0xFF334155)
+                        : const Color(0xFFE2E8F0),
+                  ),
                 ),
               ),
               child: Column(
@@ -187,7 +198,9 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: AppTheme.textMuted.withAlpha(80),
+                      color: isDark
+                          ? const Color(0xFF475569)
+                          : const Color(0xFFCBD5E1),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -198,9 +211,15 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                     width: 200,
                     height: 200,
                     decoration: BoxDecoration(
-                      color: AppTheme.backgroundDark,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white.withAlpha(12)),
+                      color: isDark
+                          ? AppTheme.backgroundDark
+                          : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isDark
+                            ? const Color(0xFF334155)
+                            : const Color(0xFFE2E8F0),
+                      ),
                     ),
                     child: Center(
                       child: AnimatedStickerPlayer(
@@ -219,19 +238,34 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
-                          color: AppTheme.surfaceLight,
-                          borderRadius: BorderRadius.circular(12),
+                          color: isDark
+                              ? AppTheme.surfaceDarkElevated
+                              : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isDark
+                                ? const Color(0xFF334155)
+                                : const Color(0xFFE2E8F0),
+                          ),
                         ),
                         child: Row(
                           children: [
-                            Text(sticker.emoji, style: const TextStyle(fontSize: 18)),
+                            Text(
+                              sticker.emoji,
+                              style: const TextStyle(fontSize: 18),
+                            ),
                             const SizedBox(width: 8),
                             Text(
                               'Emoji',
                               style: TextStyle(
-                                color: AppTheme.textMuted.withAlpha(200),
+                                color: isDark
+                                    ? AppTheme.textMutedDark
+                                    : AppTheme.textMutedLight,
                                 fontSize: 12,
                               ),
                             ),
@@ -240,17 +274,27 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                       ),
                       const SizedBox(width: 10),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
-                          color: AppTheme.surfaceLight,
-                          borderRadius: BorderRadius.circular(12),
+                          color: isDark
+                              ? AppTheme.surfaceDarkElevated
+                              : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isDark
+                                ? const Color(0xFF334155)
+                                : const Color(0xFFE2E8F0),
+                          ),
                         ),
                         child: Text(
                           sticker.isVideo
                               ? '🎬 Video'
                               : sticker.isAnimated
-                                  ? '✨ Hareketli'
-                                  : '🖼️ Statik WebP',
+                              ? '✨ Hareketli'
+                              : '🖼️ Statik WebP',
                           style: const TextStyle(
                             color: AppTheme.accentPrimary,
                             fontSize: 12,
@@ -295,8 +339,9 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                         HapticFeedback.selectionClick();
                         setState(() {
                           sticker.isSelected = !sticker.isSelected;
-                          _selectAll =
-                              widget.stickerSet.stickers.every((s) => s.isSelected);
+                          _selectAll = widget.stickerSet.stickers.every(
+                            (s) => s.isSelected,
+                          );
                         });
                         setModalState(() {});
                         Navigator.pop(context);
@@ -313,8 +358,9 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
   }
 
   Future<void> _exportToWhatsApp() async {
-    final selected =
-        widget.stickerSet.stickers.where((s) => s.isSelected).toList();
+    final selected = widget.stickerSet.stickers
+        .where((s) => s.isSelected)
+        .toList();
     if (selected.length < 3) {
       _showSnackBar('WhatsApp en az 3 çıkartma gerektirir.', isError: true);
       return;
@@ -334,6 +380,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
 
       // Split into WhatsApp packs (max 30 each)
       final chunks = _whatsappService.splitIntoPacks(selected);
+      final preparedParts = <_PreparedPackPart>[];
 
       for (int chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
         final chunk = chunks[chunkIdx];
@@ -355,7 +402,8 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
           final totalIdx = chunkIdx * 30 + i;
           final totalCount = selected.length;
 
-          final isAnimatedPack = widget.stickerSet.isAnimated ||
+          final isAnimatedPack =
+              widget.stickerSet.isAnimated ||
               widget.stickerSet.isVideo ||
               selected.any((s) => s.isAnimated || s.isVideo);
 
@@ -424,57 +472,83 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
           outputDir,
         );
 
-        final isAnimatedPack = widget.stickerSet.isAnimated ||
+        final isAnimatedPack =
+            widget.stickerSet.isAnimated ||
             widget.stickerSet.isVideo ||
             selected.any((s) => s.isAnimated || s.isVideo);
 
-        setState(() {
-          _statusText = chunks.length > 1
-              ? 'WhatsApp\'a ekleniyor... (Parça ${chunkIdx + 1}/${chunks.length})'
-              : 'WhatsApp\'a ekleniyor...';
-        });
-
-        debugPrint('🚀 Sending sticker pack to WhatsApp: id=$packId, name="$packName", animated=$isAnimatedPack, stickers=${stickerData.length}');
-
-        // Add to WhatsApp
-        await _whatsappService.addStickerPack(
-          identifier: packId,
-          name: packName,
+        final partItem = _PreparedPackPart(
+          index: chunkIdx,
+          totalParts: chunks.length,
+          packId: packId,
+          packName: packName,
           publisher: publisher,
           trayPath: trayPath,
           stickerData: stickerData,
-          animatedStickerPack: isAnimatedPack,
+          isAnimated: isAnimatedPack,
         );
+        preparedParts.add(partItem);
 
-        // Save locally
-        await _storageService.savePack(SavedPack(
-          identifier: packId,
-          name: packName,
-          publisher: publisher,
-          trayImagePath: trayPath,
-          stickerPaths:
-              stickerData.map((d) => d['path'] as String).toList(),
-          emojis: stickerData
-              .map((d) => (d['emojis'] as List).first as String)
-              .toList(),
-          stickerCount: stickerData.length,
-          savedAt: DateTime.now(),
-          isAnimated: widget.stickerSet.isAnimated || widget.stickerSet.isVideo,
-          addedToWhatsApp: true,
-        ));
-
-        // When multiple chunks, brief pause between intents
-        if (chunkIdx < chunks.length - 1) {
-          await Future.delayed(const Duration(milliseconds: 600));
-        }
+        // Pre-save to local storage so pack is never lost
+        await _storageService.savePack(
+          SavedPack(
+            identifier: packId,
+            name: packName,
+            publisher: publisher,
+            trayImagePath: trayPath,
+            stickerPaths: stickerData.map((d) => d['path'] as String).toList(),
+            emojis: stickerData
+                .map((d) => (d['emojis'] as List).first as String)
+                .toList(),
+            stickerCount: stickerData.length,
+            savedAt: DateTime.now(),
+            isAnimated: isAnimatedPack,
+            addedToWhatsApp: false,
+          ),
+        );
       }
 
+      // Finish processing state
       if (mounted) {
-        HapticFeedback.mediumImpact();
-        final successMsg = chunks.length > 1
-            ? '✅ ${selected.length} çıkartma (${chunks.length} parça) başarıyla WhatsApp\'a aktarıldı!'
-            : '✅ Paket başarıyla WhatsApp\'a eklendi!';
-        _showSnackBar(successMsg);
+        setState(() {
+          _isProcessing = false;
+          _progress = 0;
+          _statusText = '';
+        });
+      }
+
+      if (preparedParts.isEmpty) return;
+
+      // Single-part export
+      if (preparedParts.length == 1) {
+        final part = preparedParts.first;
+        final result = await _whatsappService.addStickerPack(
+          identifier: part.packId,
+          name: part.packName,
+          publisher: part.publisher,
+          trayPath: part.trayPath,
+          stickerData: part.stickerData,
+          animatedStickerPack: part.isAnimated,
+        );
+
+        if (!mounted) return;
+
+        if (result.isAdded) {
+          await _storageService.updatePackStatus(part.packId, true);
+          HapticFeedback.mediumImpact();
+          _showSnackBar('✅ Paket başarıyla WhatsApp\'a eklendi!');
+        } else if (result.isCancelled) {
+          _showSnackBar('WhatsApp\'a ekleme iptal edildi.');
+        } else {
+          _showSnackBar(
+            'Hata: ${result.errorMessage ?? "Bilinmeyen bir hata oluştu."}',
+            isError: true,
+          );
+        }
+      } else {
+        // Multi-part export: present controlled multi-step sheet
+        if (!mounted) return;
+        await _showMultiPartExportSheet(preparedParts);
       }
     } catch (e, stackTrace) {
       debugPrint('❌ WhatsApp Export Error: $e\n$stackTrace');
@@ -485,7 +559,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
         );
       }
     } finally {
-      if (mounted) {
+      if (mounted && _isProcessing) {
         setState(() {
           _isProcessing = false;
           _progress = 0;
@@ -493,6 +567,23 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
         });
       }
     }
+  }
+
+  Future<void> _showMultiPartExportSheet(
+    List<_PreparedPackPart> preparedParts,
+  ) async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return _MultiPartExportSheet(
+          preparedParts: preparedParts,
+          whatsappService: _whatsappService,
+          storageService: _storageService,
+        );
+      },
+    );
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
@@ -510,6 +601,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
     TelegramStickerSet set,
     List<TelegramSticker> filtered,
   ) {
+    final isDark = AppTheme.isDark(context);
     final active = _activePreviewSticker ?? set.stickers.firstOrNull;
     if (active == null) return const SizedBox.shrink();
 
@@ -521,21 +613,10 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceDark,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: (set.isVideo ? AppTheme.accentSecondary : AppTheme.accentPrimary)
-              .withAlpha(70),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: (set.isVideo ? AppTheme.accentSecondary : AppTheme.accentPrimary)
-                .withAlpha(20),
-            blurRadius: 16,
-            spreadRadius: 1,
-          ),
-        ],
+        color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+        borderRadius: AppTheme.cardRadius,
+        border: AppTheme.getBorder(context),
+        boxShadow: isDark ? null : AppTheme.lightCardShadow,
       ),
       child: Row(
         children: [
@@ -544,11 +625,14 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
             width: 104,
             height: 104,
             decoration: BoxDecoration(
-              color: AppTheme.backgroundDark,
-              borderRadius: BorderRadius.circular(16),
+              color: isDark
+                  ? AppTheme.surfaceDarkElevated
+                  : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: (set.isVideo ? AppTheme.accentSecondary : AppTheme.accentPrimary)
-                    .withAlpha(50),
+                color: isDark
+                    ? const Color(0xFF334155)
+                    : const Color(0xFFE2E8F0),
               ),
             ),
             child: ClipRRect(
@@ -575,18 +659,23 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
               children: [
                 // Live Badge
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
-                    color: (set.isVideo
-                            ? AppTheme.accentSecondary
-                            : AppTheme.accentPrimary)
-                        .withAlpha(30),
+                    color:
+                        (set.isVideo
+                                ? AppTheme.accentSecondary
+                                : AppTheme.accentPrimary)
+                            .withAlpha(30),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: (set.isVideo
-                              ? AppTheme.accentSecondary
-                              : AppTheme.accentPrimary)
-                          .withAlpha(80),
+                      color:
+                          (set.isVideo
+                                  ? AppTheme.accentSecondary
+                                  : AppTheme.accentPrimary)
+                              .withAlpha(80),
                     ),
                   ),
                   child: Row(
@@ -603,7 +692,9 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        set.isVideo ? 'Canlı Video Döngüsü' : 'Canlı Lottie Animasyon',
+                        set.isVideo
+                            ? 'Canlı Video Döngüsü'
+                            : 'Canlı Lottie Animasyon',
                         style: TextStyle(
                           color: set.isVideo
                               ? AppTheme.accentSecondary
@@ -621,10 +712,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                 // Emoji & Index
                 Row(
                   children: [
-                    Text(
-                      active.emoji,
-                      style: const TextStyle(fontSize: 18),
-                    ),
+                    Text(active.emoji, style: const TextStyle(fontSize: 18)),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -699,27 +787,32 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppTheme.isDark(context);
     final set = widget.stickerSet;
     final selectedCount = set.selectedCount;
     final totalCount = set.stickers.length;
     final filtered = _filteredStickers;
 
     return Scaffold(
-      backgroundColor: AppTheme.backgroundDark,
+      backgroundColor: AppTheme.getBackground(context),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
+          icon: Icon(
+            Icons.arrow_back_ios_rounded,
+            size: 20,
+            color: AppTheme.getText(context),
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: Column(
           children: [
             Text(
               set.title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
-                color: AppTheme.textPrimary,
+                color: AppTheme.getText(context),
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -736,7 +829,10 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                 ),
                 const SizedBox(width: 6),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: set.isStatic
                         ? AppTheme.accentPrimary.withAlpha(25)
@@ -776,9 +872,14 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
             },
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert_rounded, color: AppTheme.textPrimary),
+            icon: const Icon(
+              Icons.more_vert_rounded,
+              color: AppTheme.textPrimary,
+            ),
             color: AppTheme.surfaceDark,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             onSelected: (val) {
               if (val == 'all') _toggleSelectAll();
               if (val == 'invert') _invertSelection();
@@ -810,22 +911,32 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               child: Container(
                 decoration: BoxDecoration(
-                  color: AppTheme.surfaceDark,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.accentPrimary.withAlpha(80)),
+                  color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isDark
+                        ? const Color(0xFF334155)
+                        : const Color(0xFFE2E8F0),
+                  ),
                 ),
                 child: TextField(
                   controller: _searchController,
                   autofocus: true,
-                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 13,
+                  ),
                   decoration: InputDecoration(
                     hintText: 'Emojiye göre filtrele (örn: 😂, 🐱, ❤️)...',
                     hintStyle: TextStyle(
                       color: AppTheme.textMuted.withAlpha(120),
                       fontSize: 12,
                     ),
-                    prefixIcon: const Icon(Icons.emoji_emotions_outlined,
-                        color: AppTheme.accentPrimary, size: 18),
+                    prefixIcon: const Icon(
+                      Icons.emoji_emotions_outlined,
+                      color: AppTheme.accentPrimary,
+                      size: 18,
+                    ),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -873,171 +984,208 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                 ? Center(
                     child: Text(
                       'Bu filtreye uygun çıkartma bulunamadı.',
-                      style: TextStyle(color: AppTheme.textMuted.withAlpha(150)),
+                      style: TextStyle(
+                        color: AppTheme.textMuted.withAlpha(150),
+                      ),
                     ),
                   )
                 : GridView.builder(
                     padding: const EdgeInsets.all(16),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 4,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 10,
-                    ),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 4,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                        ),
                     itemCount: filtered.length,
                     itemBuilder: (context, index) {
                       final sticker = filtered[index];
                       final thumbId = sticker.thumbFileId ?? sticker.fileId;
                       final thumbBytes = _thumbnails[thumbId];
-                      final isCurrentHero = _activePreviewSticker?.fileId == sticker.fileId;
+                      final isCurrentHero =
+                          _activePreviewSticker?.fileId == sticker.fileId;
 
                       return GestureDetector(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          setState(() {
-                            _activePreviewSticker = sticker;
-                            sticker.isSelected = !sticker.isSelected;
-                            _selectAll = set.stickers.every((s) => s.isSelected);
-                          });
-                        },
-                        onLongPress: () {
-                          setState(() => _activePreviewSticker = sticker);
-                          _showStickerDetail(sticker);
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            color: sticker.isSelected
-                                ? AppTheme.surfaceLight
-                                : AppTheme.surfaceDark,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: isCurrentHero
-                                  ? AppTheme.accentSecondary
-                                  : (sticker.isSelected
-                                      ? AppTheme.accentPrimary.withAlpha(140)
-                                      : Colors.white.withAlpha(10)),
-                              width: isCurrentHero ? 2.5 : (sticker.isSelected ? 2 : 1),
-                            ),
-                            boxShadow: isCurrentHero
-                                ? AppTheme.glowShadow(AppTheme.accentSecondary, blur: 10)
-                                : null,
-                          ),
-                          child: Stack(
-                            children: [
-                              // Sticker image or live vector Lottie
-                              Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(6),
-                                  child: sticker.isAnimated &&
-                                          _lottieCache.containsKey(sticker.fileId)
-                                      ? Lottie.memory(
-                                          _lottieCache[sticker.fileId]!,
-                                          fit: BoxFit.contain,
-                                          repeat: true,
-                                          errorBuilder: (_, _, _) => thumbBytes != null
-                                              ? Image.memory(
-                                                  thumbBytes,
-                                                  fit: BoxFit.contain,
-                                                  errorBuilder: (_, _, _) =>
-                                                      _placeholderIcon(sticker.emoji),
-                                                )
-                                              : _placeholderIcon(sticker.emoji),
-                                        )
-                                      : (thumbBytes != null
-                                          ? Image.memory(
-                                              thumbBytes,
-                                              fit: BoxFit.contain,
-                                              errorBuilder: (_, _, _) =>
-                                                  _placeholderIcon(sticker.emoji),
-                                            )
-                                          : _placeholderIcon(sticker.emoji)),
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              setState(() {
+                                _activePreviewSticker = sticker;
+                                sticker.isSelected = !sticker.isSelected;
+                                _selectAll = set.stickers.every(
+                                  (s) => s.isSelected,
+                                );
+                              });
+                            },
+                            onLongPress: () {
+                              setState(() => _activePreviewSticker = sticker);
+                              _showStickerDetail(sticker);
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              decoration: BoxDecoration(
+                                color: sticker.isSelected
+                                    ? (isDark
+                                          ? AppTheme.surfaceDarkElevated
+                                          : const Color(0xFFEFF6FF))
+                                    : (isDark
+                                          ? AppTheme.cardDark
+                                          : AppTheme.cardLight),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isCurrentHero
+                                      ? AppTheme.primaryBlue
+                                      : (sticker.isSelected
+                                            ? AppTheme.primaryBlue
+                                            : (isDark
+                                                  ? const Color(0xFF334155)
+                                                  : const Color(0xFFE2E8F0))),
+                                  width: isCurrentHero
+                                      ? 2.0
+                                      : (sticker.isSelected ? 2.0 : 1.0),
                                 ),
                               ),
-                              // Selection indicator
-                              Positioned(
-                                top: 4,
-                                right: 4,
-                                child: AnimatedScale(
-                                  scale: sticker.isSelected ? 1.0 : 0.0,
-                                  duration: const Duration(milliseconds: 200),
-                                  child: Container(
-                                    width: 20,
-                                    height: 20,
-                                    decoration: BoxDecoration(
-                                      gradient: AppTheme.primaryGradient,
-                                      shape: BoxShape.circle,
-                                      boxShadow: AppTheme.glowShadow(
-                                        AppTheme.accentPrimary,
-                                        blur: 8,
-                                      ),
-                                    ),
-                                    child: const Icon(
-                                      Icons.check,
-                                      size: 13,
-                                      color: Colors.white,
+                              child: Stack(
+                                children: [
+                                  // Sticker image or live vector Lottie
+                                  Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(6),
+                                      child:
+                                          sticker.isAnimated &&
+                                              _lottieCache.containsKey(
+                                                sticker.fileId,
+                                              )
+                                          ? Lottie.memory(
+                                              _lottieCache[sticker.fileId]!,
+                                              fit: BoxFit.contain,
+                                              repeat: true,
+                                              errorBuilder: (_, _, _) =>
+                                                  thumbBytes != null
+                                                  ? Image.memory(
+                                                      thumbBytes,
+                                                      fit: BoxFit.contain,
+                                                      errorBuilder: (_, _, _) =>
+                                                          _placeholderIcon(
+                                                            sticker.emoji,
+                                                          ),
+                                                    )
+                                                  : _placeholderIcon(
+                                                      sticker.emoji,
+                                                    ),
+                                            )
+                                          : (thumbBytes != null
+                                                ? Image.memory(
+                                                    thumbBytes,
+                                                    fit: BoxFit.contain,
+                                                    errorBuilder: (_, _, _) =>
+                                                        _placeholderIcon(
+                                                          sticker.emoji,
+                                                        ),
+                                                  )
+                                                : _placeholderIcon(
+                                                    sticker.emoji,
+                                                  )),
                                     ),
                                   ),
-                                ),
-                              ),
-                              // Emoji label
-                              Positioned(
-                                bottom: 4,
-                                left: 4,
-                                child: Text(
-                                  sticker.emoji,
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                              ),
-                              // Play / Live badge indicator
-                              Positioned(
-                                bottom: 2,
-                                right: 2,
-                                child: InkWell(
-                                  onTap: () {
-                                    setState(() => _activePreviewSticker = sticker);
-                                    _showStickerDetail(sticker);
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: isCurrentHero
-                                          ? AppTheme.accentSecondary.withAlpha(200)
-                                          : ((sticker.isVideo || sticker.isAnimated)
-                                              ? AppTheme.accentPrimary.withAlpha(80)
-                                              : Colors.black.withAlpha(80)),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          sticker.isVideo || sticker.isAnimated
-                                              ? Icons.play_arrow_rounded
-                                              : Icons.zoom_in_rounded,
-                                          size: 11,
+                                  // Selection indicator
+                                  Positioned(
+                                    top: 4,
+                                    right: 4,
+                                    child: AnimatedScale(
+                                      scale: sticker.isSelected ? 1.0 : 0.0,
+                                      duration: const Duration(
+                                        milliseconds: 200,
+                                      ),
+                                      child: Container(
+                                        width: 20,
+                                        height: 20,
+                                        decoration: const BoxDecoration(
+                                          color: AppTheme.primaryBlue,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.check,
+                                          size: 13,
                                           color: Colors.white,
                                         ),
-                                        if (sticker.isVideo || sticker.isAnimated) ...[
-                                          const SizedBox(width: 1),
-                                          Text(
-                                            isCurrentHero ? 'OYNATILIYOR' : 'CANLI',
-                                            style: const TextStyle(
-                                              fontSize: 7.5,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                              letterSpacing: 0.2,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
+                                      ),
                                     ),
                                   ),
-                                ),
+                                  // Emoji label
+                                  Positioned(
+                                    bottom: 4,
+                                    left: 4,
+                                    child: Text(
+                                      sticker.emoji,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                  // Play / Live badge indicator
+                                  Positioned(
+                                    bottom: 2,
+                                    right: 2,
+                                    child: InkWell(
+                                      onTap: () {
+                                        setState(
+                                          () => _activePreviewSticker = sticker,
+                                        );
+                                        _showStickerDetail(sticker);
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 4,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isCurrentHero
+                                              ? AppTheme.accentSecondary
+                                                    .withAlpha(200)
+                                              : ((sticker.isVideo ||
+                                                        sticker.isAnimated)
+                                                    ? AppTheme.accentPrimary
+                                                          .withAlpha(80)
+                                                    : Colors.black.withAlpha(
+                                                        80,
+                                                      )),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              sticker.isVideo ||
+                                                      sticker.isAnimated
+                                                  ? Icons.play_arrow_rounded
+                                                  : Icons.zoom_in_rounded,
+                                              size: 11,
+                                              color: Colors.white,
+                                            ),
+                                            if (sticker.isVideo ||
+                                                sticker.isAnimated) ...[
+                                              const SizedBox(width: 1),
+                                              Text(
+                                                isCurrentHero
+                                                    ? 'OYNATILIYOR'
+                                                    : 'CANLI',
+                                                style: const TextStyle(
+                                                  fontSize: 7.5,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
+                                                  letterSpacing: 0.2,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        ),
-                      )
+                            ),
+                          )
                           .animate()
                           .fadeIn(
                             delay: Duration(milliseconds: 40 * (index % 12)),
@@ -1056,9 +1204,13 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppTheme.surfaceDark,
+              color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLightMode,
               border: Border(
-                top: BorderSide(color: Colors.white.withAlpha(15)),
+                top: BorderSide(
+                  color: isDark
+                      ? const Color(0xFF334155)
+                      : const Color(0xFFE2E8F0),
+                ),
               ),
             ),
             child: SafeArea(
@@ -1150,16 +1302,14 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
   }
 
   Widget _placeholderIcon(String emoji, {double size = 26}) {
+    final isDark = AppTheme.isDark(context);
     return Container(
       decoration: BoxDecoration(
-        color: AppTheme.surfaceDark,
+        color: isDark ? AppTheme.surfaceDarkElevated : const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Center(
-        child: Text(
-          emoji,
-          style: TextStyle(fontSize: size),
-        ),
+        child: Text(emoji, style: TextStyle(fontSize: size)),
       ),
     );
   }
@@ -1178,31 +1328,459 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppTheme.isDark(context);
+
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(8),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppTheme.accentPrimary.withAlpha(35)
-              : AppTheme.surfaceDark,
-          borderRadius: BorderRadius.circular(14),
+              ? AppTheme.primaryBlue.withAlpha(isDark ? 35 : 20)
+              : (isDark
+                    ? AppTheme.surfaceDarkElevated
+                    : const Color(0xFFF1F5F9)),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isSelected
-                ? AppTheme.accentPrimary
-                : Colors.white.withAlpha(12),
+                ? AppTheme.primaryBlue
+                : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: isSelected ? Colors.white : AppTheme.textMuted,
+            color: isSelected
+                ? AppTheme.primaryBlue
+                : (isDark
+                      ? AppTheme.textSecondaryDark
+                      : AppTheme.textSecondaryLight),
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PreparedPackPart {
+  final int index;
+  final int totalParts;
+  final String packId;
+  final String packName;
+  final String publisher;
+  final String trayPath;
+  final List<Map<String, dynamic>> stickerData;
+  final bool isAnimated;
+  bool isAddedToWhatsApp = false;
+  bool isCancelled = false;
+  String? error;
+
+  _PreparedPackPart({
+    required this.index,
+    required this.totalParts,
+    required this.packId,
+    required this.packName,
+    required this.publisher,
+    required this.trayPath,
+    required this.stickerData,
+    required this.isAnimated,
+  });
+}
+
+class _MultiPartExportSheet extends StatefulWidget {
+  final List<_PreparedPackPart> preparedParts;
+  final WhatsAppService whatsappService;
+  final StorageService storageService;
+
+  const _MultiPartExportSheet({
+    required this.preparedParts,
+    required this.whatsappService,
+    required this.storageService,
+  });
+
+  @override
+  State<_MultiPartExportSheet> createState() => _MultiPartExportSheetState();
+}
+
+class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
+  int? _activeSendingIndex;
+
+  int get _nextPendingIndex {
+    return widget.preparedParts.indexWhere((p) => !p.isAddedToWhatsApp);
+  }
+
+  bool get _isAllAdded {
+    return widget.preparedParts.every((p) => p.isAddedToWhatsApp);
+  }
+
+  int get _addedCount {
+    return widget.preparedParts.where((p) => p.isAddedToWhatsApp).length;
+  }
+
+  Future<void> _exportPart(_PreparedPackPart part) async {
+    if (_activeSendingIndex != null) return;
+
+    setState(() {
+      _activeSendingIndex = part.index;
+      part.error = null;
+      part.isCancelled = false;
+    });
+
+    try {
+      final result = await widget.whatsappService.addStickerPack(
+        identifier: part.packId,
+        name: part.packName,
+        publisher: part.publisher,
+        trayPath: part.trayPath,
+        stickerData: part.stickerData,
+        animatedStickerPack: part.isAnimated,
+      );
+
+      if (!mounted) return;
+
+      if (result.isAdded) {
+        part.isAddedToWhatsApp = true;
+        part.isCancelled = false;
+        part.error = null;
+        await widget.storageService.updatePackStatus(part.packId, true);
+        HapticFeedback.mediumImpact();
+      } else if (result.isCancelled) {
+        part.isCancelled = true;
+        HapticFeedback.lightImpact();
+      } else {
+        part.error = result.errorMessage ?? 'Aktarım başarısız oldu.';
+        HapticFeedback.heavyImpact();
+      }
+    } catch (e) {
+      if (mounted) {
+        part.error = e.toString().replaceAll('Exception: ', '').trim();
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _activeSendingIndex = null;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = AppTheme.isDark(context);
+    final total = widget.preparedParts.length;
+    final nextIdx = _nextPendingIndex;
+    final allDone = _isAllAdded;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLightMode,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        border: Border(
+          top: BorderSide(
+            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+          ),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Title & Progress Summary
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.whatsappGreen.withAlpha(25),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.splitscreen_rounded,
+                  color: AppTheme.whatsappGreen,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Çok Parçalı WhatsApp Aktarımı',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      allDone
+                          ? 'Tüm parçalar WhatsApp\'a eklendi!'
+                          : '$_addedCount / $total parça eklendi (WhatsApp paketi başına maks 30 çıkartma)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? AppTheme.textMutedDark : AppTheme.textMutedLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // Informational note
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: isDark ? AppTheme.surfaceDarkElevated : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline_rounded,
+                  size: 16,
+                  color: isDark ? AppTheme.textMutedDark : AppTheme.textMutedLight,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'WhatsApp her paketi ayrı bir onay ekranıyla kabul eder. Parçaları sırayla onaylayarak kolayca aktarabilirsiniz.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? AppTheme.textMutedDark : AppTheme.textMutedLight,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Parts list
+          Flexible(
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: widget.preparedParts.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, idx) {
+                final part = widget.preparedParts[idx];
+                final isSendingThis = _activeSendingIndex == part.index;
+                final isNext = nextIdx == part.index;
+
+                Color borderColor;
+                if (part.isAddedToWhatsApp) {
+                  borderColor = AppTheme.success.withAlpha(120);
+                } else if (isNext) {
+                  borderColor = AppTheme.whatsappGreen;
+                } else {
+                  borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+                }
+
+                return Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: borderColor, width: isNext ? 1.5 : 1),
+                  ),
+                  child: Row(
+                    children: [
+                      // Tray icon preview
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: File(part.trayPath).existsSync()
+                            ? Image.file(
+                                File(part.trayPath),
+                                width: 42,
+                                height: 42,
+                                fit: BoxFit.cover,
+                              )
+                            : Container(
+                                width: 42,
+                                height: 42,
+                                color: isDark ? AppTheme.surfaceDarkElevated : const Color(0xFFE2E8F0),
+                                child: const Icon(Icons.image_outlined, size: 20),
+                              ),
+                      ),
+                      const SizedBox(width: 12),
+
+                      // Part title and count
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              part.packName,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textPrimary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${part.stickerData.length} çıkartma ${part.isAnimated ? "• Hareketli" : ""}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isDark ? AppTheme.textMutedDark : AppTheme.textMutedLight,
+                              ),
+                            ),
+                            if (part.error != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                part.error!,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppTheme.error,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ] else if (part.isCancelled) ...[
+                              const SizedBox(height: 2),
+                              const Text(
+                                'WhatsApp\'ta iptal edildi',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppTheme.warning,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Action / Status indicator
+                      if (isSendingThis)
+                        const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.whatsappGreen),
+                          ),
+                        )
+                      else if (part.isAddedToWhatsApp)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.success.withAlpha(25),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: AppTheme.success.withAlpha(80)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle_rounded, size: 13, color: AppTheme.success),
+                              SizedBox(width: 4),
+                              Text(
+                                'Eklendi',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.success,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        OutlinedButton(
+                          onPressed: _activeSendingIndex != null
+                              ? null
+                              : () => _exportPart(part),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            minimumSize: Size.zero,
+                            side: BorderSide(
+                              color: isNext ? AppTheme.whatsappGreen : (isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1)),
+                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          child: Text(
+                            part.isCancelled || part.error != null ? 'Tekrar Dene' : 'Ekle',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isNext ? AppTheme.whatsappGreen : AppTheme.textPrimary,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Primary bottom button
+          if (allDone)
+            GradientButton(
+              text: 'Tamamla',
+              icon: Icons.check_rounded,
+              gradient: AppTheme.primaryGradient,
+              onPressed: () => Navigator.pop(context),
+            )
+          else ...[
+            GradientButton(
+              text: nextIdx != -1
+                  ? 'Parça ${nextIdx + 1}/$total\'i WhatsApp\'a Ekle'
+                  : 'Sıradaki Parçayı Ekle',
+              icon: Icons.send_rounded,
+              gradient: AppTheme.whatsappGradient,
+              isLoading: _activeSendingIndex != null,
+              onPressed: _activeSendingIndex != null || nextIdx == -1
+                  ? null
+                  : () => _exportPart(widget.preparedParts[nextIdx]),
+            ),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: _activeSendingIndex != null ? null : () => Navigator.pop(context),
+              child: Text(
+                'Daha Sonra Tamamla',
+                style: TextStyle(
+                  color: isDark ? AppTheme.textMutedDark : AppTheme.textMutedLight,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

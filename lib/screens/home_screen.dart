@@ -199,9 +199,12 @@ class HomeScreenState extends State<HomeScreen> {
                       padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
                         color: isDark
-                            ? Colors.white.withAlpha(20)
-                            : Colors.black.withAlpha(15),
+                            ? const Color(0xFF1E293B)
+                            : const Color(0xFFF1F5F9),
                         borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                        ),
                       ),
                       child: Icon(
                         isDark
@@ -221,16 +224,15 @@ class HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   children: [
                     Container(
-                      width: 72,
-                      height: 72,
+                      width: 68,
+                      height: 68,
                       decoration: BoxDecoration(
-                        gradient: AppTheme.primaryGradient,
-                        borderRadius: BorderRadius.circular(22),
-                        boxShadow: AppTheme.glowShadow(AppTheme.primaryBlue, blur: 24),
+                        color: AppTheme.primaryBlue,
+                        borderRadius: BorderRadius.circular(16),
                       ),
                       child: const Icon(
                         Icons.swap_horiz_rounded,
-                        size: 38,
+                        size: 36,
                         color: Colors.white,
                       ),
                     )
@@ -383,7 +385,7 @@ class HomeScreenState extends State<HomeScreen> {
                         border: Border.all(
                           color: _errorMessage != null
                               ? AppTheme.error.withAlpha(120)
-                              : (isDark ? Colors.white.withAlpha(15) : const Color(0xFFCBD5E1)),
+                              : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
                         ),
                       ),
                       child: Row(
@@ -533,7 +535,7 @@ class HomeScreenState extends State<HomeScreen> {
                           color: surfaceMuted,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: isDark ? Colors.white.withAlpha(12) : const Color(0xFFE2E8F0),
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
                           ),
                         ),
                         child: Row(
@@ -569,16 +571,16 @@ class HomeScreenState extends State<HomeScreen> {
                 child: Row(
                   children: [
                     Container(
-                      width: 48,
-                      height: 48,
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
-                        gradient: AppTheme.primaryGradient,
-                        borderRadius: BorderRadius.circular(14),
+                        color: AppTheme.primaryBlue,
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(
                         Icons.auto_awesome_rounded,
                         color: Colors.white,
-                        size: 24,
+                        size: 22,
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -707,8 +709,8 @@ class _FeatureTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF151E32) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+        borderRadius: AppTheme.cardRadius,
         border: AppTheme.getBorder(context),
         boxShadow: isDark ? null : AppTheme.lightCardShadow,
       ),

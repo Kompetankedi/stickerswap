@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-/// A premium gradient button with glow effect and press animation.
+/// Kurumsal, net ve minimalist buton bileşeni.
+/// Neon parlama (glow) ve aşırı efektler tamamen kaldırılmıştır.
 class GradientButton extends StatefulWidget {
   final String text;
   final VoidCallback? onPressed;
@@ -18,7 +19,7 @@ class GradientButton extends StatefulWidget {
     this.gradient = AppTheme.primaryGradient,
     this.icon,
     this.isLoading = false,
-    this.height = 56,
+    this.height = 52,
     this.width,
   });
 
@@ -36,11 +37,12 @@ class _GradientButtonState extends State<GradientButton>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 150),
+      duration: const Duration(milliseconds: 120),
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.96).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.98,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -55,10 +57,8 @@ class _GradientButtonState extends State<GradientButton>
 
     return AnimatedBuilder(
       animation: _scaleAnimation,
-      builder: (context, child) => Transform.scale(
-        scale: _scaleAnimation.value,
-        child: child,
-      ),
+      builder: (context, child) =>
+          Transform.scale(scale: _scaleAnimation.value, child: child),
       child: GestureDetector(
         onTapDown: isEnabled ? (_) => _controller.forward() : null,
         onTapUp: isEnabled
@@ -69,7 +69,7 @@ class _GradientButtonState extends State<GradientButton>
             : null,
         onTapCancel: isEnabled ? () => _controller.reverse() : null,
         child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 150),
           opacity: isEnabled ? 1.0 : 0.5,
           child: Container(
             height: widget.height,
@@ -77,18 +77,21 @@ class _GradientButtonState extends State<GradientButton>
             decoration: BoxDecoration(
               gradient: widget.gradient,
               borderRadius: AppTheme.buttonRadius,
-              boxShadow: AppTheme.glowShadow(
-                widget.gradient.colors.first,
-                blur: 24,
-              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(20),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
             ),
             child: Center(
               child: widget.isLoading
                   ? const SizedBox(
-                      width: 24,
-                      height: 24,
+                      width: 22,
+                      height: 22,
                       child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
+                        strokeWidth: 2.2,
                         color: Colors.white,
                       ),
                     )
@@ -96,16 +99,16 @@ class _GradientButtonState extends State<GradientButton>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (widget.icon != null) ...[
-                          Icon(widget.icon, size: 20, color: Colors.white),
-                          const SizedBox(width: 10),
+                          Icon(widget.icon, size: 19, color: Colors.white),
+                          const SizedBox(width: 8),
                         ],
                         Text(
                           widget.text,
                           style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
                             color: Colors.white,
-                            letterSpacing: 0.5,
+                            letterSpacing: 0.3,
                           ),
                         ),
                       ],
