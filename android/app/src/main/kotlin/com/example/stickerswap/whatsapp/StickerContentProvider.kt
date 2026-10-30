@@ -69,19 +69,26 @@ class StickerContentProvider : ContentProvider() {
             STICKERS_OF_PACK -> {
                 val identifier = uri.lastPathSegment ?: return null
                 val pack = StickerPackStorage.getStickerPack(context, identifier)
-                    ?: throw IllegalArgumentException("Sticker pack not found: $identifier")
-                val cursor = pack.toStickersCursor()
+                val cursor = pack?.toStickersCursor() ?: MatrixCursor(StickerPack.STICKER_COLUMNS)
                 cursor.setNotificationUri(context.contentResolver, uri)
                 cursor
             }
-            else -> throw IllegalArgumentException("Unknown URI: $uri")
+            else -> {
+                Log.w(TAG, "Unknown query URI: $uri")
+                null
+            }
         }
+    }
+
+    override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
+        val afd = openAssetFile(uri, mode) ?: return null
+        return afd.parcelFileDescriptor
     }
 
     override fun openAssetFile(uri: Uri, mode: String): AssetFileDescriptor? {
         val matchCode = uriMatcher.match(uri)
         if (matchCode != STICKER_ASSET) {
-            throw IllegalArgumentException("Invalid URI for asset: $uri")
+            throw FileNotFoundException("Invalid URI for asset: $uri")
         }
 
         val segments = uri.pathSegments
@@ -91,7 +98,17 @@ class StickerContentProvider : ContentProvider() {
 
         val encodedPath = segments.last()
         val realPath = StickerPack.decodePath(encodedPath)
-        val file = File(realPath)
+        var file = File(realPath)
+
+        if (!file.exists()) {
+            val context = context
+            if (context != null) {
+                val candidate = File(context.filesDir, encodedPath)
+                if (candidate.exists()) {
+                    file = candidate
+                }
+            }
+        }
 
         if (!file.exists()) {
             Log.e(TAG, "Asset file not found on disk: $realPath (encoded: $encodedPath)")
@@ -100,12 +117,41 @@ class StickerContentProvider : ContentProvider() {
 
         return try {
             val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-            AssetFileDescriptor(pfd, 0, AssetFileDescriptor.UNKNOWN_LENGTH)
+            AssetFileDescriptor(pfd, 0, file.length())
         } catch (e: Exception) {
             Log.e(TAG, "Error opening asset file: $realPath", e)
             throw FileNotFoundException("Cannot open asset file: $realPath")
         }
     }
+
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int {
+        val context = context ?: return 0
+        val matchCode = uriMatcher.match(uri)
+        val identifier = when (matchCode) {
+            METADATA_ONE, STICKERS_OF_PACK -> uri.lastPathSegment
+            else -> uri.lastPathSegment
+        }
+
+        return if (!identifier.isNullOrEmpty()) {
+            Log.d(TAG, "delete called for identifier: $identifier")
+            StickerPackStorage.deleteStickerPack(context, identifier)
+            try {
+                context.contentResolver.notifyChange(uri, null)
+            } catch (_: Exception) {}
+            1
+        } else {
+            0
+        }
+    }
+
+    override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+
+    override fun update(
+        uri: Uri,
+        values: ContentValues?,
+        selection: String?,
+        selectionArgs: Array<out String>?
+    ): Int = 0
 
     override fun getType(uri: Uri): String? {
         val context = context ?: return null
@@ -123,12 +169,7 @@ class StickerContentProvider : ContentProvider() {
                     "image/webp"
                 }
             }
-            else -> throw IllegalArgumentException("Unknown URI: $uri")
+            else -> null
         }
     }
-
-    override fun insert(uri: Uri, values: ContentValues?): Uri? = throw UnsupportedOperationException()
-    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = throw UnsupportedOperationException()
-    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = throw UnsupportedOperationException()
 }
-

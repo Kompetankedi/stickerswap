@@ -5,12 +5,20 @@
 ## 🇹🇷 Türkçe (Turkish)
 
 ### 1. WhatsApp'tan Paketi Kaldırırken "Paket Dosyası Mevcut Değil" Hatası (1. ÖNCELİK)
-- **Durum:** 🚨 **1. ÖNCELİK / İnceleniyor**
-- **Sorun:** Çıkartma paketi WhatsApp'a sorunsuz eklendikten sonra, kullanıcı paketi WhatsApp içerisinden ("Çıkartmalarım" sekmesi veya çıkartma tepsisi üzerinden) silmek/kaldırmak istediğinde WhatsApp *"Paket dosyası mevcut değil"* (veya benzeri bir provider/dosya bulunamadı) hatası vermektedir.
-- **Olası Nedenler & Yapılacaklar:**
-  - `StickerContentProvider.kt` içerisinde `delete` endpoint'i ve URI pattern'leri incelenmeli (WhatsApp silme işlemi sırasında `ContentProvider.delete(...)` çağrısı yapıyor olabilir veya `UnsupportedOperationException` yerine uygun `delete` yanıtı bekliyor olabilir).
-  - WhatsApp'ın paket detay ekranını açarken veya silme sorgusu yaparken çağırdığı URI rotaları (`metadata`, `stickers`, `delete`) ve döviz parametreleri tespit edilmeli.
-  - Paket kaldırıldığında yerel `StickerPackStorage` ile senkronizasyon sağlanmalı; WhatsApp'ın beklediği HTTP/ContentProvider durum kodları ve AssetFileDescriptor akışı eksiksiz desteklenmeli.
+- **Durum:** ✅ **ÇÖZÜLDÜ & DOĞRULANDI** (Sorun Çözüldü)
+- **Test Sonucu:** Android 16 (crDroid 12.13, KernelSU root, Redmi Note 12 Pro 4G) üzerinde canlı ADB ContentProvider sorguları (`query`, `read`, `delete`) ile doğrulanmıştır. Eski/yetim ve mevcut paketlerin WhatsApp "Çıkartmalarım" menüsünden ve harici olarak sorunsuz listelenip hatasız kaldırılabildiği kanıtlanmıştır.
+- **Tespit Edilen Kök Nedenler:**
+  1. **StickerContentProvider İstisna Fırlatması:** `StickerContentProvider.kt` içerisinde `STICKERS_OF_PACK` sorgusunda paket bulunamadığında boş bir cursor dönmek yerine doğrudan `IllegalArgumentException` fırlatılıyordu. WhatsApp silme işlemi veya detay açılışı öncesinde paketi teyit ederken bu istisnayı aldığında işlemi durdurup arayüzde *"Paket dosyası mevcut değil"* hatası veriyordu.
+  2. **Metadata Kolon İsimleri ve Eksik Kolon:** WhatsApp resmi StickerContentProvider spesifikasyonunda beklenen `sticker_pack_publisher_email`, `sticker_pack_publisher_website`, `sticker_pack_privacy_policy_website`, `sticker_pack_license_agreement_website` kolonları ön ek olmadan verilmişti ve `whatsapp_will_not_cache_stickers` kolonu tamamen eksikti.
+  3. **openFile Metodunun Eksikliği:** Android `ContentProvider`'da `openFile` override edilmediği için dosya okuma çağrılarında sistem varsayılan `FileNotFoundException: No files supported by provider` hatası dönüyor, dosya boyutu `UNKNOWN_LENGTH` olarak veriliyordu.
+  4. **Delete Endpoint'inin Unsupported Kalması:** `delete(...)` metodu `UnsupportedOperationException` fırlatıyordu; bu durum silme isteği atan istemcilerin çökmesine neden oluyordu.
+  5. **Dinamik Zaman Damgalı (Non-Deterministic) ID Üretimi:** Aktarım sırasında paket ID'lerine `DateTime.now().millisecondsSinceEpoch` eklenmesi sebebiyle her aktarımda yeni bir ID oluşuyor, WhatsApp'ta kalan eski ID'ler yerel depolamada bulunamadığı için yetim kalarak silinemez hale geliyordu.
+- **Yapılan İyileştirmeler:**
+  - **Güvenli Cursor ve Hata Yönetimi (`StickerContentProvider.kt`):** Bulunamayan paketler için `IllegalArgumentException` yerine boş MatrixCursor (0 satır) dönülecek şekilde güncellendi. `openFile` metodu eklenerek `AssetFileDescriptor` doğrudan dosya boyutuyla (`file.length()`) servis edildi. `delete(...)` metodu yerel depolama ile senkronize edilerek güvenli silme ve `notifyChange` sağlandı. `insert` ve `update` çağrıları çökmeyecek şekilde zararsız safe dönüşe uyarlandı.
+  - **WhatsApp Spesifikasyonuna Tam Uyum (`StickerPackModels.kt`):** WhatsApp resmi spesifikasyonundaki 13 adet metadata kolonu birebir uygulandı (`whatsapp_will_not_cache_stickers` dahil). Emojiler virgül `,` ile ayrıldı.
+  - **Zaman Damgası Fallback'i (`StickerPackStorage.kt`):** Eski yetim paketlerin tanınabilmesi için zaman damgası temizleme temelli (timestamp-fallback) esnek ID eşleştirme ve temizleme desteği eklendi.
+  - **Deterministik Paket Kimlikleri (`pack_preview_screen.dart`):** Paket ID üretimi deterministik hale getirildi (`${packName}_part${idx}`); gereksiz dinamik timestamp kaldırıldı.
+  - **MethodChannel Senkronizasyonu (`whatsapp_service.dart` & `my_packs_screen.dart`):** Uygulama içinden silinen paketlerin Android yerel ContentProvider depolamasından da eşzamanlı olarak silinmesi için `deleteStickerPack` MethodChannel entegrasyonu tamamlandı.
 
 ---
 
@@ -51,8 +59,8 @@
 
 ### 5. Sürüm Numaralandırma Kuralı (Version Increment)
 - **Durum:** ✅ **UYGULANDI**
-- **Açıklama:** Çok parçalı WhatsApp aktarım motoru ve yerel ContentProvider güncellemesi ile `pubspec.yaml` sürümü güncellendi:
-  - `1.0.1+2` ➡️ `1.0.2+3` olarak artırıldı.
+- **Açıklama:** Yapılan değişiklikler ve giderilen hatalar doğrultusunda `pubspec.yaml` sürümü güncellendi:
+  - `1.0.1+2` ➡️ `1.0.2+3` ➡️ `1.0.3+4` olarak artırıldı.
 
 ---
 ---
@@ -60,12 +68,20 @@
 ## 🇬🇧 English
 
 ### 1. "Sticker Pack File Does Not Exist" Error on Deleting Pack from WhatsApp (TOP PRIORITY)
-- **Status:** 🚨 **TOP PRIORITY / Under Investigation**
-- **Issue:** After a sticker pack is successfully added to WhatsApp, when the user tries to delete/remove the pack from inside WhatsApp (via the "My Stickers" tab or sticker tray), WhatsApp throws a *"Sticker pack file does not exist"* (or file/provider not found) error.
-- **Probable Causes & Action Items:**
-  - Investigate `StickerContentProvider.kt` implementation for `delete` endpoint and URI patterns (WhatsApp might invoke `ContentProvider.delete(...)` during removal or expect proper handling instead of `UnsupportedOperationException`).
-  - Verify WhatsApp's queried URI routes (`metadata`, `stickers`, `delete`) and parameters when deleting or inspecting packs.
-  - Ensure proper synchronization with `StickerPackStorage` and verify file descriptors.
+- **Status:** ✅ **RESOLVED & VERIFIED** (Issue Fixed)
+- **Test Results:** Live tested on Android 16 physical device (crDroid 12.13, KernelSU root, Redmi Note 12 Pro 4G) using direct ADB ContentProvider queries (`query`, `read`, `delete`). Verified that existing, orphan, and deleted packs are gracefully queried and removed from WhatsApp without throwing errors.
+- **Identified Root Causes:**
+  1. **Unhandled IllegalArgumentException in ContentProvider:** When queried for a pack that did not exist in storage, `StickerContentProvider.kt` threw `IllegalArgumentException` instead of returning an empty Cursor. WhatsApp caught this IPC exception and displayed *"Sticker pack file does not exist"*, aborting the removal.
+  2. **Metadata Column Names & Missing Field:** Columns were missing WhatsApp's required `sticker_pack_` prefix and the `whatsapp_will_not_cache_stickers` column was omitted entirely.
+  3. **Missing `openFile` Implementation:** Only `openAssetFile` was implemented, causing `openFile` calls to throw `FileNotFoundException: No files supported by provider`, while `UNKNOWN_LENGTH` confused decoders.
+  4. **Delete Throwing UnsupportedOperationException:** `delete(...)` threw an exception instead of removing the record from `StickerPackStorage`.
+  5. **Non-Deterministic Pack Identifiers:** Appending `DateTime.now().millisecondsSinceEpoch` on export created phantom orphan IDs in WhatsApp whenever a pack was re-exported.
+- **Implemented Fixes:**
+  - `StickerContentProvider.kt`: Returns empty MatrixCursors for missing packs, implements `openFile`, passes exact file lengths in `AssetFileDescriptor`, and safely handles `delete(...)` with content resolver notifications.
+  - `StickerPackModels.kt`: Synchronized all 13 metadata columns with the official WhatsApp sticker specification and formatted emoji strings with comma delimiters.
+  - `StickerPackStorage.kt`: Added resilient ID normalization and timestamp-stripping fallback for querying and deleting legacy packs.
+  - `pack_preview_screen.dart`: Made pack identifiers deterministic (`${packName}_part${idx}`).
+  - `whatsapp_service.dart` & `my_packs_screen.dart`: Integrated `deleteStickerPack` MethodChannel to keep storage synchronized when deleting packs in-app.
 
 ---
 
@@ -105,5 +121,5 @@
 
 ### 5. Application Versioning Rule
 - **Status:** ✅ **APPLIED**
-- **Note:** Following the native multi-part WhatsApp export engine upgrade, `pubspec.yaml` was incremented:
-  - `1.0.1+2` ➡️ `1.0.2+3`.
+- **Note:** Following the native multi-part WhatsApp export engine upgrade and StickerContentProvider removal fix, `pubspec.yaml` was incremented:
+  - `1.0.1+2` ➡️ `1.0.2+3` ➡️ `1.0.3+4`.

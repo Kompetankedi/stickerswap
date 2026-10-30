@@ -175,6 +175,7 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
     );
 
     if (confirmed == true) {
+      await _whatsappService.deleteStickerPack(pack.identifier);
       await _storageService.removePack(pack.identifier);
       _loadPacks();
     }

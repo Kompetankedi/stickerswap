@@ -390,8 +390,9 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
           rawPackName,
           fallback: 'Sticker Pack ${chunkIdx + 1}',
         );
+        final idPartSuffix = chunks.length > 1 ? '_part${chunkIdx + 1}' : '';
         final packId = WhatsAppService.sanitizeIdentifier(
-          '${widget.stickerSet.name}_part${chunkIdx + 1}_${DateTime.now().millisecondsSinceEpoch}',
+          '${widget.stickerSet.name}$idPartSuffix',
         );
 
         final stickerData = <Map<String, dynamic>>[];

@@ -28,11 +28,12 @@ data class StickerPack(
             "sticker_pack_icon",
             "android_play_store_link",
             "ios_app_download_link",
-            "publisher_email",
-            "publisher_website",
-            "privacy_policy_website",
-            "license_agreement_website",
+            "sticker_pack_publisher_email",
+            "sticker_pack_publisher_website",
+            "sticker_pack_privacy_policy_website",
+            "sticker_pack_license_agreement_website",
             "image_data_version",
+            "whatsapp_will_not_cache_stickers",
             "animated_sticker_pack"
         )
 
@@ -143,6 +144,7 @@ data class StickerPack(
             privacyPolicyWebsite ?: "",
             licenseAgreementWebsite ?: "",
             imageDataVersion,
+            0,
             if (animatedStickerPack) 1 else 0
         )
     }
@@ -150,7 +152,7 @@ data class StickerPack(
     fun toStickersCursor(): MatrixCursor {
         val cursor = MatrixCursor(STICKER_COLUMNS)
         stickers.forEach { sticker ->
-            val emojiStr = sticker.emojis.joinToString(" ")
+            val emojiStr = sticker.emojis.joinToString(",")
             cursor.addRow(
                 arrayOf(
                     encodePath(sticker.path),
@@ -167,4 +169,3 @@ data class StickerItem(
     val path: String,
     val emojis: List<String> = emptyList()
 )
-

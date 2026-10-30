@@ -147,6 +147,19 @@ class WhatsAppService {
     }
   }
 
+  /// Deletes a sticker pack from native StickerContentProvider storage.
+  Future<bool> deleteStickerPack(String identifier) async {
+    try {
+      final result = await _channel.invokeMethod<bool>(
+        'deleteStickerPack',
+        {'identifier': sanitizeIdentifier(identifier)},
+      );
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Checks whether WhatsApp is installed on the device.
   Future<bool> isWhatsAppInstalled() async {
     try {

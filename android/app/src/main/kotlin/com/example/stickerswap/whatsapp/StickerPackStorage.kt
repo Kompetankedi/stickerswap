@@ -36,13 +36,27 @@ object StickerPackStorage {
 
     @Synchronized
     fun getStickerPack(context: Context, identifier: String): StickerPack? {
-        return getStickerPacks(context).firstOrNull { it.identifier == identifier }
+        val packs = getStickerPacks(context)
+        // 1. Exact match
+        val exact = packs.firstOrNull { it.identifier == identifier }
+        if (exact != null) return exact
+
+        // 2. Fallback: match without trailing timestamp
+        val cleanIdentifier = identifier.replace(Regex("_[0-9]{10,}$"), "")
+        return packs.firstOrNull {
+            it.identifier == cleanIdentifier ||
+            it.identifier.replace(Regex("_[0-9]{10,}$"), "") == cleanIdentifier
+        }
     }
 
     @Synchronized
     fun saveOrUpdateStickerPack(context: Context, pack: StickerPack) {
         val packs = getStickerPacks(context)
-        val existingIndex = packs.indexOfFirst { it.identifier == pack.identifier }
+        val cleanId = pack.identifier.replace(Regex("_[0-9]{10,}$"), "")
+        val existingIndex = packs.indexOfFirst {
+            it.identifier == pack.identifier ||
+            it.identifier.replace(Regex("_[0-9]{10,}$"), "") == cleanId
+        }
         if (existingIndex != -1) {
             val existing = packs[existingIndex]
             val nextVersion = (existing.imageDataVersion.toIntOrNull() ?: 1) + 1
@@ -57,7 +71,11 @@ object StickerPackStorage {
     @Synchronized
     fun deleteStickerPack(context: Context, identifier: String) {
         val packs = getStickerPacks(context)
-        val filtered = packs.filter { it.identifier != identifier }
+        val cleanIdentifier = identifier.replace(Regex("_[0-9]{10,}$"), "")
+        val filtered = packs.filter {
+            it.identifier != identifier &&
+            it.identifier.replace(Regex("_[0-9]{10,}$"), "") != cleanIdentifier
+        }
         if (filtered.size != packs.size) {
             saveAll(context, filtered)
         }
@@ -73,4 +91,3 @@ object StickerPackStorage {
         }
     }
 }
-
