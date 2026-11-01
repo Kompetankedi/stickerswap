@@ -70,6 +70,16 @@
   - `1.0.1+2` ➡️ `1.0.2+3` ➡️ `1.0.3+4` ➡️ `1.0.4+5` olarak artırıldı (WhatsApp hareketli çıkartma desteği, VP9 MediaCodec ve ContentProvider güncellemeleri).
 
 ---
+
+### 6. Çıkartmalar Gönderilemiyor veya Paket Silinemiyor ("Sticker Dosyası Bulunamadı" Hatası)
+- **Durum:** 🔴 **AÇIK / İNCELENİYOR** (Bildirildi)
+- **Hata Belirtisi:** Çıkartmalar WhatsApp'a gönderilemiyor ya da çıkartma paketi silinemiyor; işlem sırasında *"Sticker dosyası bulunamadı"* / dosya erişim hatası alınıyor.
+- **Olası Kök Nedenler & İncelenecek Noktalar:**
+  1. **ContentProvider Dosya Erişimi (`StickerContentProvider.kt`):** `openAssetFile` / `openFile` metodunda `encodedPath` çözülürken (`decodePath`) veya dosya aranırken dosyanın belirtilen dizinde bulunamaması nedeniyle `FileNotFoundException` fırlatılması.
+  2. **Önbellek & Depolama Kalıcılığı (Cache vs Files Dir):** Çıkartma dosyalarının geçici (cache/temporary) dizinde tutulması durumunda işletim sistemi veya Flutter temizliği sonrası dosyaların silinmesi; kalıcı `filesDir` veya yerel depolama eşleşmesinin kontrol edilmesi.
+  3. **WhatsApp Gönderim / Silme Senkronizasyonu:** Paket silinirken veya WhatsApp'a aktarılırken `StickerPackStorage` ile diskteki WebP/PNG çıkartma dosyalarının tutarsız hale gelmesi ve silme/okuma taleplerinin kilitlenmesi.
+
+---
 ---
 
 ## 🇬🇧 English
@@ -137,3 +147,13 @@
 - **Status:** ✅ **APPLIED**
 - **Note:** Following the native multi-part WhatsApp export engine upgrade, StickerContentProvider removal fix, and animated sticker pipeline implementation, `pubspec.yaml` was incremented:
   - `1.0.1+2` ➡️ `1.0.2+3` ➡️ `1.0.3+4` ➡️ `1.0.4+5`.
+
+---
+
+### 6. Stickers Cannot Be Sent or Pack Cannot Be Deleted ("Sticker File Not Found" Error)
+- **Status:** 🔴 **OPEN / UNDER INVESTIGATION** (Reported)
+- **Symptom:** Stickers fail to send/export to WhatsApp or packs cannot be deleted due to a *"Sticker file not found"* error.
+- **Potential Root Causes & Investigation Points:**
+  1. **ContentProvider File Resolution (`StickerContentProvider.kt`):** Possible `FileNotFoundException` in `openAssetFile` / `openFile` during path decoding (`decodePath`) or locating the file on disk.
+  2. **Storage Persistence & Lifecycle (Cache vs Files Dir):** If sticker assets are written to temporary/cache directories rather than persistent storage, OS purges can cause WhatsApp read calls to fail with missing file errors.
+  3. **WhatsApp Export & Deletion Sync:** Discrepancies between metadata in `StickerPackStorage` and actual WebP/PNG files on disk when removing or transferring packs, leading to unhandled failures.
