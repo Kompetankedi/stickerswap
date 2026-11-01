@@ -92,6 +92,14 @@ class WhatsAppMethodHandler(private val activity: Activity) : MethodChannel.Meth
                     val identifier = call.argument<String>("identifier")
                     if (identifier != null) {
                         StickerPackStorage.deleteStickerPack(context, identifier)
+                        try {
+                            val authority = StickerContentProvider.getAuthority(context.packageName)
+                            context.contentResolver.notifyChange(Uri.parse("content://$authority/metadata"), null)
+                            context.contentResolver.notifyChange(Uri.parse("content://$authority/metadata/$identifier"), null)
+                            context.contentResolver.notifyChange(Uri.parse("content://$authority/stickers/$identifier"), null)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to notify ContentResolver on deleteStickerPack", e)
+                        }
                     }
                     result.success(true)
                 }

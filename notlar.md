@@ -67,17 +67,25 @@
 ### 5. Sürüm Numaralandırma Kuralı (Version Increment)
 - **Durum:** ✅ **UYGULANDI**
 - **Açıklama:** Yapılan değişiklikler ve giderilen hatalar doğrultusunda `pubspec.yaml` sürümü güncellendi:
-  - `1.0.1+2` ➡️ `1.0.2+3` ➡️ `1.0.3+4` ➡️ `1.0.4+5` olarak artırıldı (WhatsApp hareketli çıkartma desteği, VP9 MediaCodec ve ContentProvider güncellemeleri).
+  - `1.0.1+2` ➡️ `1.0.2+3` ➡️ `1.0.3+4` ➡️ `1.0.4+5` ➡️ `1.0.5+2006` olarak artırıldı (StickerContentProvider dosya çözümleme mimarisi, dinamik fallback motoru ve güvenli silme senkronizasyonu).
 
 ---
 
 ### 6. Çıkartmalar Gönderilemiyor veya Paket Silinemiyor ("Sticker Dosyası Bulunamadı" Hatası)
-- **Durum:** 🔴 **AÇIK / İNCELENİYOR** (Bildirildi)
-- **Hata Belirtisi:** Çıkartmalar WhatsApp'a gönderilemiyor ya da çıkartma paketi silinemiyor; işlem sırasında *"Sticker dosyası bulunamadı"* / dosya erişim hatası alınıyor.
-- **Olası Kök Nedenler & İncelenecek Noktalar:**
-  1. **ContentProvider Dosya Erişimi (`StickerContentProvider.kt`):** `openAssetFile` / `openFile` metodunda `encodedPath` çözülürken (`decodePath`) veya dosya aranırken dosyanın belirtilen dizinde bulunamaması nedeniyle `FileNotFoundException` fırlatılması.
-  2. **Önbellek & Depolama Kalıcılığı (Cache vs Files Dir):** Çıkartma dosyalarının geçici (cache/temporary) dizinde tutulması durumunda işletim sistemi veya Flutter temizliği sonrası dosyaların silinmesi; kalıcı `filesDir` veya yerel depolama eşleşmesinin kontrol edilmesi.
-  3. **WhatsApp Gönderim / Silme Senkronizasyonu:** Paket silinirken veya WhatsApp'a aktarılırken `StickerPackStorage` ile diskteki WebP/PNG çıkartma dosyalarının tutarsız hale gelmesi ve silme/okuma taleplerinin kilitlenmesi.
+- **Durum:** ✅ **ÇÖZÜLDÜ & DOĞRULANDI** (Sorun Çözüldü)
+- **Test Sonucu:** Android 16 (crDroid 12.13, KernelSU root, Redmi Note 12 Pro 4G) üzerinde hem canlı ADB ContentProvider sorguları (`query`, `read`, `delete`) ile hem de kullanıcı tarafından fiziksel cihaz arayüzünde canlı WhatsApp üzerinden gönderim ve silme işlemleriyle başarıyla doğrulanmıştır. Hem mevcut paketlerin (`Lilpussi2004`) WebP ve PNG dosyaları doğrudan ve tam dosya isimleriyle okunabilmiş, hem de WhatsApp'ta yetim kalan eski paketler (`AzizKediler_by_fStikBot_part2`) için 3 çıkartmalı güvenli validator yanıtı ve saydam fallback görselleri dönülerek WhatsApp'ın kilitlenmesi engellenmiştir.
+- **Tespit Edilen Kök Nedenler:**
+  1. **ContentProvider `openAssetFile` / `openFile` Çözümleme Hatası:** WhatsApp standart URI ile (`stickers_asset/<identifier>/<file_name>`) dosya istediğinde `encodedPath` doğrudan kök dizinde (`/<file_name>`) veya yalnızca `filesDir` altında aranıyordu. Flutter dosyalarının bulunduğu `app_flutter/whatsapp_packs` dizinine, paket modeli eşleşmesine veya paket kimliğine hiç bakılmadığı için sistem doğrudan `FileNotFoundException` fırlatıyor ve WhatsApp arayüzünde Türkçe *"Sticker dosyası bulunamadı"* hatası veriliyordu.
+  2. **Eksik URI Eşleşmeleri (`UriMatcher`):** `uriMatcher` yalnızca `stickers_asset/*/*` rotasını içeriyor, WhatsApp'ın tepsi simgesi veya doğrudan dosya erişimleri için kullandığı `stickers_asset/*` ve alt yollar eksik kalıyordu.
+  3. **WhatsApp 3 Çıkartma Doğrulayıcı (Validator) Kuralı:** WhatsApp'ta ekli kalmış ancak yerelde silinmiş paketler için `STICKERS_OF_PACK` sorgusu 0 satır döndüğünde, WhatsApp dahili doğrulayıcısı paketi geçersiz sayıyor ve paket detayını açmayı ya da silmeyi *"Sticker dosyası bulunamadı"* / *"Paket dosyası mevcut değil"* hatasıyla bloke ediyordu.
+  4. **Silme Senkronizasyonu & Çok Parçalı Dizin Çakışması:** Flutter tarafında `removePack` çağrıldığında, aynı dizini paylaşan çok parçalı paketlerin dosyaları kontrolsüz silinebiliyor veya WhatsApp'a silme bildirimi gitmiyordu.
+- **Yapılan İyileştirmeler:**
+  - **Çok Katmanlı Dosya Çözümleyici (`resolveAssetFile` - `StickerContentProvider.kt`):** Gelen dosya talebi sırasıyla; doğrudan mutlak yol, `decodePath`, `StickerPackStorage` modelindeki `trayImage` ve `stickers` listesi, numerik indeks (ör. `sticker_1.webp`), `app_flutter/whatsapp_packs/<identifier>` ve türev dizinler üzerinden taranarak dosyanın fiziksel varlığı eksiksiz tespit edildi.
+  - **Dinamik Şeffaf Varlık Fallback'i (`getOrCreateFallbackAsset`):** Diskte fiziksel olarak bulunamayan veya yetim kalan çıkartmalar için sistemin `FileNotFoundException` fırlatıp WhatsApp'ı çökertmesi yerine; 96x96 şeffaf PNG veya 512x512 şeffaf WebP üretilerek WhatsApp'ın paketi hatasız açması ve kullanıcının çöp kutusu simgesiyle WhatsApp'tan kalıcı olarak silebilmesi sağlandı.
+  - **WhatsApp Uyumlu Kolon Dönüşleri (`StickerPackModels.kt`):** `toMetadataRow` ve `toStickersCursor` WhatsApp standartlarına uygun olarak yalın dosya isimlerini (`tray_icon.png`, `xxx_wa.webp`) döndürecek şekilde düzenlendi; geriye dönük uyumluluk korundu.
+  - **Güvenli Fallback Cursor'ları (`createFallbackMetadataRow` & `createFallbackStickersCursor`):** Veritabanında bulunamayan paketler sorgulandığında WhatsApp kuralı gereği 3 çıkartmalı MatrixCursor dönülerek validator kilitlenmesi önlendi.
+  - **ContentResolver Deletion Notification (`WhatsAppMethodHandler.kt` & `StickerContentProvider.kt`):** Silme işlemlerinde `metadata`, `metadata/$id` ve `stickers/$id` URI'ları tetiklenerek WhatsApp'ın önbellek senkronizasyonu sağlandı.
+  - **Güvenli Dizin Temizliği (`storage_service.dart`):** Çok parçalı paketlerde diğer parçaların dosyalarının kazara silinmesini önleyen akıllı dizin temizliği uygulandı.
 
 ---
 ---
@@ -146,14 +154,22 @@
 ### 5. Application Versioning Rule
 - **Status:** ✅ **APPLIED**
 - **Note:** Following the native multi-part WhatsApp export engine upgrade, StickerContentProvider removal fix, and animated sticker pipeline implementation, `pubspec.yaml` was incremented:
-  - `1.0.1+2` ➡️ `1.0.2+3` ➡️ `1.0.3+4` ➡️ `1.0.4+5`.
+  - `1.0.1+2` ➡️ `1.0.2+3` ➡️ `1.0.3+4` ➡️ `1.0.4+5` ➡️ `1.0.5+2006`.
 
 ---
 
 ### 6. Stickers Cannot Be Sent or Pack Cannot Be Deleted ("Sticker File Not Found" Error)
-- **Status:** 🔴 **OPEN / UNDER INVESTIGATION** (Reported)
-- **Symptom:** Stickers fail to send/export to WhatsApp or packs cannot be deleted due to a *"Sticker file not found"* error.
-- **Potential Root Causes & Investigation Points:**
-  1. **ContentProvider File Resolution (`StickerContentProvider.kt`):** Possible `FileNotFoundException` in `openAssetFile` / `openFile` during path decoding (`decodePath`) or locating the file on disk.
-  2. **Storage Persistence & Lifecycle (Cache vs Files Dir):** If sticker assets are written to temporary/cache directories rather than persistent storage, OS purges can cause WhatsApp read calls to fail with missing file errors.
-  3. **WhatsApp Export & Deletion Sync:** Discrepancies between metadata in `StickerPackStorage` and actual WebP/PNG files on disk when removing or transferring packs, leading to unhandled failures.
+- **Status:** ✅ **RESOLVED & VERIFIED** (Issue Fixed)
+- **Test Results:** Live tested on Android 16 physical device (crDroid 12.13, KernelSU root, Redmi Note 12 Pro 4G) using both direct ADB ContentProvider queries (`query`, `read`, `delete`) and direct in-app testing by user on WhatsApp for sending and deleting stickers. Verified that existing packs (`Lilpussi2004`) stream WebP and PNG assets by simple and encoded filenames, and orphan/deleted packs (`AzizKediler_by_fStikBot_part2`) receive compliant 3-sticker validator matrices and transparent asset fallbacks without throwing `FileNotFoundException`.
+- **Identified Root Causes:**
+  1. **ContentProvider File Resolution Flaw (`openAssetFile`):** When WhatsApp queried asset URIs (`stickers_asset/<identifier>/<file_name>`), the provider looked for files strictly at root `/` or in `filesDir`. It ignored Flutter's `app_flutter/whatsapp_packs` directory, the pack identifier, and `StickerPackStorage` paths, throwing unhandled `FileNotFoundException` and displaying *"Sticker dosyası bulunamadı"* in WhatsApp.
+  2. **Missing UriMatcher Patterns:** `uriMatcher` only supported `stickers_asset/*/*`, omitting `stickers_asset/*` and subpaths used by WhatsApp for tray icon queries.
+  3. **WhatsApp 3-Sticker Validator Rule:** Returning 0 rows for missing/orphan packs triggered WhatsApp's validator rejection, causing the UI to lock up and block pack details and deletions.
+  4. **Multi-Part Storage Directory Collision:** In Flutter's `removePack`, deleting shared directories broke remaining parts or left phantom entries in WhatsApp.
+- **Implemented Fixes:**
+  - **Multi-Tier Asset Resolver (`resolveAssetFile` - `StickerContentProvider.kt`):** Resolves assets across direct paths, `decodePath`, model metadata (`trayImage`, `stickers`), numeric indices, `app_flutter/whatsapp_packs`, and storage fallback directories.
+  - **Transparent Placeholder Fallback (`getOrCreateFallbackAsset`):** Instead of throwing `FileNotFoundException`, serves valid 96x96 transparent PNGs or 512x512 WebPs so WhatsApp never crashes and users can cleanly open and remove stuck packs.
+  - **Standardized Column Filenames (`StickerPackModels.kt`):** Conforms to WhatsApp specifications by exposing clean relative filenames while retaining backwards-compatible path decoding.
+  - **Resilient Fallback Cursors (`createFallbackMetadataRow` & `createFallbackStickersCursor`):** Returns 3 placeholder stickers for missing packs to satisfy WhatsApp's validator requirements.
+  - **Synchronized Deletion Notifications (`WhatsAppMethodHandler.kt` & `StickerContentProvider.kt`):** Triggers `ContentResolver.notifyChange` on `metadata` and `stickers` endpoints upon pack deletion.
+  - **Safe Directory Cleanup (`storage_service.dart`):** Prevents accidental deletion of directories shared by multi-part packs.

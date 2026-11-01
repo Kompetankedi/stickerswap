@@ -43,9 +43,19 @@ object StickerPackStorage {
 
         // 2. Fallback: match without trailing timestamp
         val cleanIdentifier = identifier.replace(Regex("_[0-9]{10,}$"), "")
-        return packs.firstOrNull {
+        val matchWithoutTimestamp = packs.firstOrNull {
             it.identifier == cleanIdentifier ||
             it.identifier.replace(Regex("_[0-9]{10,}$"), "") == cleanIdentifier
+        }
+        if (matchWithoutTimestamp != null) return matchWithoutTimestamp
+
+        // 3. Fallback: match base pack name without part suffix
+        val baseId = cleanIdentifier.replace(Regex("_part[0-9]+.*"), "")
+        return packs.firstOrNull {
+            it.identifier == baseId ||
+            it.identifier.replace(Regex("_[0-9]{10,}$"), "").replace(Regex("_part[0-9]+.*"), "") == baseId ||
+            it.identifier.startsWith(baseId) ||
+            baseId.startsWith(it.identifier)
         }
     }
 
@@ -72,9 +82,11 @@ object StickerPackStorage {
     fun deleteStickerPack(context: Context, identifier: String) {
         val packs = getStickerPacks(context)
         val cleanIdentifier = identifier.replace(Regex("_[0-9]{10,}$"), "")
+        val baseId = cleanIdentifier.replace(Regex("_part[0-9]+.*"), "")
         val filtered = packs.filter {
             it.identifier != identifier &&
-            it.identifier.replace(Regex("_[0-9]{10,}$"), "") != cleanIdentifier
+            it.identifier.replace(Regex("_[0-9]{10,}$"), "") != cleanIdentifier &&
+            it.identifier != baseId
         }
         if (filtered.size != packs.size) {
             saveAll(context, filtered)

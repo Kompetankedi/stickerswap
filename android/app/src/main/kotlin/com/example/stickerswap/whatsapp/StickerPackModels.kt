@@ -53,6 +53,39 @@ data class StickerPack(
             return if (!restored.startsWith(File.separator)) File.separator + restored else restored
         }
 
+        fun createFallbackMetadataRow(identifier: String): Array<Any?> {
+            return arrayOf(
+                identifier,
+                identifier,
+                "StickerSwap",
+                "tray_icon.png",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "1",
+                0,
+                1
+            )
+        }
+
+        fun createFallbackStickersCursor(identifier: String): MatrixCursor {
+            val cursor = MatrixCursor(STICKER_COLUMNS)
+            for (i in 1..3) {
+                cursor.addRow(
+                    arrayOf(
+                        "sticker_$i.webp",
+                        "⭐",
+                        "",
+                        1
+                    )
+                )
+            }
+            return cursor
+        }
+
         fun fromJson(json: JSONObject): StickerPack {
             val identifier = json.getString("identifier")
             val name = json.getString("name")
@@ -133,11 +166,12 @@ data class StickerPack(
     }
 
     fun toMetadataRow(): Array<Any?> {
+        val iconName = File(trayImage).name
         return arrayOf(
             identifier,
             name,
             publisher,
-            encodePath(trayImage),
+            if (iconName.isNotEmpty()) iconName else encodePath(trayImage),
             androidPlayStoreLink ?: "",
             iosAppStoreLink ?: "",
             publisherEmail ?: "",
@@ -154,9 +188,10 @@ data class StickerPack(
         val cursor = MatrixCursor(STICKER_COLUMNS)
         stickers.forEach { sticker ->
             val emojiStr = sticker.emojis.joinToString(",")
+            val fileName = File(sticker.path).name
             cursor.addRow(
                 arrayOf(
-                    encodePath(sticker.path),
+                    if (fileName.isNotEmpty()) fileName else encodePath(sticker.path),
                     emojiStr,
                     "",
                     if (animatedStickerPack) 1 else 0

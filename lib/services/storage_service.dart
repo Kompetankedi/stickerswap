@@ -100,12 +100,27 @@ class StorageService {
       packs.map((p) => p.toJsonString()).toList(),
     );
 
-    // Also remove file directory if exists
+    // Safely remove file directory only if no remaining pack uses it
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      final packDir = Directory(p.join(dir.path, 'whatsapp_packs', identifier));
-      if (await packDir.exists()) {
-        await packDir.delete(recursive: true);
+      final remainingPacks = getSavedPacks();
+      final baseName = identifier.replaceAll(RegExp(r'_part\d+.*$'), '');
+      final isUsedByOthers = remainingPacks.any((p) {
+        final pBase = p.identifier.replaceAll(RegExp(r'_part\d+.*$'), '');
+        return p.identifier == identifier || pBase == baseName;
+      });
+
+      if (!isUsedByOthers) {
+        final dir = await getApplicationDocumentsDirectory();
+        final packDir = Directory(p.join(dir.path, 'whatsapp_packs', identifier));
+        if (await packDir.exists()) {
+          await packDir.delete(recursive: true);
+        }
+        if (baseName != identifier) {
+          final baseDir = Directory(p.join(dir.path, 'whatsapp_packs', baseName));
+          if (await baseDir.exists()) {
+            await baseDir.delete(recursive: true);
+          }
+        }
       }
     } catch (_) {}
   }
