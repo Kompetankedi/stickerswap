@@ -1,175 +1,103 @@
-# StickerSwap - Geliştirici Notları & Yapılacaklar (Developer Notes & Roadmap)
+# StickerSwap - Geliştirici Notları & Yol Haritası (Developer Notes & Roadmap)
 
 ---
 
 ## 🇹🇷 Türkçe (Turkish)
 
-### 1. WhatsApp'tan Paketi Kaldırırken "Paket Dosyası Mevcut Değil" Hatası (1. ÖNCELİK)
-- **Durum:** ✅ **ÇÖZÜLDÜ & DOĞRULANDI** (Sorun Çözüldü)
-- **Test Sonucu:** Android 16 (crDroid 12.13, KernelSU root, Redmi Note 12 Pro 4G) üzerinde canlı ADB ContentProvider sorguları (`query`, `read`, `delete`) ile doğrulanmıştır. Eski/yetim ve mevcut paketlerin WhatsApp "Çıkartmalarım" menüsünden ve harici olarak sorunsuz listelenip hatasız kaldırılabildiği kanıtlanmıştır.
+### 1. Çıkartmalar İlk Kez İndirilip Hazırlanırken Uygulamanın Donması / Yanıt Vermemesi (Optimizasyon İhtiyacı)
+- **Öncelik:** 🔴 **YÜKSEK (1. Öncelik)**
+- **Durum:** ⏳ **YAPILACAK / İNCELENİYOR**
+- **Sorun Tanımı:**
+  - Donma ve kilitlenme sorunu WhatsApp ekranı açıldığında değil; **kullanıcı paket linkini verip çıkartmaları seçtikten sonra *"WhatsApp'a Aktar"* işlemini ilk başlattığı anda** gerçekleşmektedir.
+  - Uygulama bu aşamada çok parçalı veya tekil tüm çıkartmaları (özellikle 30, 50, 120 adet veya hareketli/video WebM) Telegram sunucularından **tek tek çekmeye, karelerini ayrıştırmaya ve dönüştürmeye başladığında** arayüz tamamen donmakta, dokunmatik yanıtsız kalmakta, ilerleme göstergesi takılmakta ve cihazda "Uygulama Yanıt Vermiyor" (ANR) uyarısı oluşma riski doğmaktadır.
 - **Tespit Edilen Kök Nedenler:**
-  1. **StickerContentProvider İstisna Fırlatması:** `StickerContentProvider.kt` içerisinde `STICKERS_OF_PACK` sorgusunda paket bulunamadığında boş bir cursor dönmek yerine doğrudan `IllegalArgumentException` fırlatılıyordu. WhatsApp silme işlemi veya detay açılışı öncesinde paketi teyit ederken bu istisnayı aldığında işlemi durdurup arayüzde *"Paket dosyası mevcut değil"* hatası veriyordu.
-  2. **Metadata Kolon İsimleri ve Eksik Kolon:** WhatsApp resmi StickerContentProvider spesifikasyonunda beklenen `sticker_pack_publisher_email`, `sticker_pack_publisher_website`, `sticker_pack_privacy_policy_website`, `sticker_pack_license_agreement_website` kolonları ön ek olmadan verilmişti ve `whatsapp_will_not_cache_stickers` kolonu tamamen eksikti.
-  3. **openFile Metodunun Eksikliği:** Android `ContentProvider`'da `openFile` override edilmediği için dosya okuma çağrılarında sistem varsayılan `FileNotFoundException: No files supported by provider` hatası dönüyor, dosya boyutu `UNKNOWN_LENGTH` olarak veriliyordu.
-  4. **Delete Endpoint'inin Unsupported Kalması:** `delete(...)` metodu `UnsupportedOperationException` fırlatıyordu; bu durum silme isteği atan istemcilerin çökmesine neden oluyordu.
-  5. **Dinamik Zaman Damgalı (Non-Deterministic) ID Üretimi:** Aktarım sırasında paket ID'lerine `DateTime.now().millisecondsSinceEpoch` eklenmesi sebebiyle her aktarımda yeni bir ID oluşuyor, WhatsApp'ta kalan eski ID'ler yerel depolamada bulunamadığı için yetim kalarak silinemez hale geliyordu.
-- **Yapılan İyileştirmeler:**
-  - **Güvenli Cursor ve Hata Yönetimi (`StickerContentProvider.kt`):** Bulunamayan paketler için `IllegalArgumentException` yerine boş MatrixCursor (0 satır) dönülecek şekilde güncellendi. `openFile` metodu eklenerek `AssetFileDescriptor` doğrudan dosya boyutuyla (`file.length()`) servis edildi. `delete(...)` metodu yerel depolama ile senkronize edilerek güvenli silme ve `notifyChange` sağlandı. `insert` ve `update` çağrıları çökmeyecek şekilde zararsız safe dönüşe uyarlandı.
-  - **WhatsApp Spesifikasyonuna Tam Uyum (`StickerPackModels.kt`):** WhatsApp resmi spesifikasyonundaki 13 adet metadata kolonu birebir uygulandı (`whatsapp_will_not_cache_stickers` dahil). Emojiler virgül `,` ile ayrıldı.
-  - **Zaman Damgası Fallback'i (`StickerPackStorage.kt`):** Eski yetim paketlerin tanınabilmesi için zaman damgası temizleme temelli (timestamp-fallback) esnek ID eşleştirme ve temizleme desteği eklendi.
-  - **Deterministik Paket Kimlikleri (`pack_preview_screen.dart`):** Paket ID üretimi deterministik hale getirildi (`${packName}_part${idx}`); gereksiz dinamik timestamp kaldırıldı.
-  - **MethodChannel Senkronizasyonu (`whatsapp_service.dart` & `my_packs_screen.dart`):** Uygulama içinden silinen paketlerin Android yerel ContentProvider depolamasından da eşzamanlı olarak silinmesi için `deleteStickerPack` MethodChannel entegrasyonu tamamlandı.
+  1. **Ana UI Isolate Üzerinde Yoğun CPU Tüketimi (Main Thread Blocking):**
+     - Çıkartmaların indirilip yerel olarak hazırlandığı bu ön hazırlık evresinde `StickerProcessor` sınıfındaki görsel işleme operasyonları (`img.decodeImage`, `_fitImage`, `img.compositeImage`, `img.encodeWebP`) Flutter'ın ana UI iş parçacığında (main isolate) senkron çalıştırılmaktadır.
+     - Her video çıkartma için Android `MediaCodec` motorundan 18 ham kare çekilmekte; bu 18 karenin her biri ana isolate'te tek tek decode edilip 512x512 canvas'a çizilmekte ve `package:image` saf Dart motoruyla çok katmanlı döngüde (kalite %75, %60, %45, %30) tekrar tekrar WebP olarak sıkıştırılmaktadır.
+     - Tek bir video çıkartmanın kodlanması CPU'da 1-3 saniye sürdüğünden, 30 ila 120 çıkartmanın tek tek çekilip işlenmesi ana iş parçacığını dakikalarca kilitli tutmaktadır.
+  2. **Seri İndirme ve İşleme Sıralaması (Sequential Pipeline Bottleneck):**
+     - Telegram'dan ağ üzerinden tek tek indirme (`downloadSticker`) ile CPU tabanlı görüntü kodlama adımları art arda (sequential) tek bir döngüde çalıştırılmaktadır. Ağ beklemesi ile CPU iş yükünün birbirini bloklaması arayüzün askıda kalma süresini aşırı uzatmaktadır.
+  3. **Bellek Şişmesi ve Çöp Toplayıcı (GC) Baskısı:**
+     - Onlarca çıkartma işlenirken açılan büyük çözünürlüklü `Image` nesneleri ve ham bayt dizileri RAM'de birikmekte, sistem sık sık Garbage Collection (GC) tetikleyerek arayüzün tamamen duraksamasına yol açmaktadır.
+
+- **Yapılacak Optimizasyonlar & Eylem Planı:**
+  - [ ] **Arka Plan Isolate (Worker Threads) Entegrasyonu:** Ağır görsel çözme, boyutlandırma ve WebP kodlama adımları `compute` veya özel bir `Isolate.run` / Isolate havuzuna taşınarak ana UI iş parçacığından tamamen ayrılacak; indirme ve hazırlık sürerken UI 60/120 FPS akıcılığını koruyacaktır.
+  - [ ] **Boru Hattı (Pipelined Concurrent Processing):** İndirme (I/O bound) işlemi ile görüntü işleme (CPU bound) eşzamanlı çalışacak şekilde kuyruk yapısına (ör. 3-4 eşzamanlı worker) alınacak; çıkartmalar tek tek sıra beklemek yerine paralel olarak indirilip işlenecektir.
+  - [ ] **WebP Kodlama Performansının İyileştirilmesi:** Saf Dart `package:image` yerine Android tarafında donanım hızlandırmalı yerel WebP sıkıştırma API'lerinin (C++/NDK veya `Bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY)`) kullanılması değerlendirilecek.
+  - [ ] **Kullanıcı Geri Bildirimi ve Akıcı İlerleme Görselleştirmesi:** Çıkartmalar arka planda çekilip hazırlanırken yüzde (`%XX`), mevcut durum (`X / Y çıkartma indiriliyor / işleniyor`) ana UI donmadan gerçek zamanlı ve akıcı animasyonla gösterilecek; kullanıcıya güvenli iptal seçeneği sunulacaktır.
 
 ---
 
-### 2. Hareketli Çıkartmaların WhatsApp'ta Statik Kalması
-- **Durum:** ✅ **ÇÖZÜLDÜ & DOĞRULANDI** (Sorun Çözüldü)
-- **Test Sonucu:** Android 16 (crDroid 12.13, KernelSU root, Redmi Note 12 Pro 4G) üzerinde 40 çıkartmalı hareketli bir Telegram video çıkartma paketi ("Aziz Kediler") ile canlı olarak test edilmiştir. WhatsApp ekleme sheet'i çıkartmaları `animated_sticker_view` olarak tanımış, WhatsApp'a başarıyla aktarılmış ve WhatsApp'ın dâhili SQLite veritabanında (`third_party_whitelist_packs`) `is_animated_pack = 1` olarak kaydedilip tüm çıkartmaların `ANIM` / `ANMF` animasyon başlıkları ve çoklu benzersiz kareleri doğrulanmıştır.
-- **Tespit Edilen Kök Nedenler:**
-  1. **ContentProvider Cursor'ında Eksik `is_animated_sticker` Kolonu:** `StickerPackModels.kt` içerisinde çıkartma sorgularında (`STICKER_COLUMNS`) `is_animated_sticker` kolonu yer almıyordu. WhatsApp çıkartma listesini çekerken bu kolonu bulamadığında çıkartmaları statik (0) kabul ediyordu.
-  2. **Android `MediaMetadataRetriever` WebM/VP9 Kare Arama Hatası:** Telegram video çıkartmaları tek anahtar kareye (keyframe 0) sahip VP9 WebM formatındadır. Android'in yerel `MediaMetadataRetriever.getScaledFrameAtTime(...)` fonksiyonu zaman damgalı arama (seek) yapamadığı için tüm karelerde video başındaki 0. kareyi dönüyor ve oluşturulan WebP çıkartması tamamen hareketsiz kalıyordu (tüm karelerin MD5 özeti aynıydı).
-  3. **Lottie (.tgs) Desteğinin Eksikliği:** Vektörel animasyonlu Lottie çıkartmaları için animasyonlu WebP dönüştürücü motoru bulunmuyordu.
-  4. **Bozuk/Eksik Başlıklı WebM Dosyalarında Aktarım Kilitlenmesi:** Kapsayıcı başlık bilgisi eksik olan bazı video dosyalarında çıkartma aktarım süreci çöktüğü için tüm paket iptal oluyordu.
-- **Yapılan İyileştirmeler:**
-  - **`is_animated_sticker` Kolon Entegrasyonu (`StickerPackModels.kt`):** `STICKER_COLUMNS` dizisine `is_animated_sticker` kolonu eklendi ve `toStickersCursor` metodunda `if (animatedStickerPack) 1 else 0` olarak dinamik şekilde sağlandı.
-  - **Sıralı Donanım/Yazılım Kod Çözücü (`MainActivity.kt`):** `MediaMetadataRetriever` yerine `MediaExtractor` + `MediaCodec` (VP9 dekoder) sıralı ayrıştırma motoru geliştirildi. I420/NV12 renk uzayından NV21'e dönüştürülüp `YuvImage` ile tam zaman çizelgesine yayılan benzersiz hareket kareleri çıkarıldı (18 karede 18 benzersiz kare doğrulanmıştır).
-  - **Lottie (.tgs) Çıkartma Motoru (`StickerProcessor.dart`):** `processLottieSticker` metodu eklenerek gzip ile sıkıştırılmış Lottie JSON dosyaları `LottieComposition` ve `LottieDrawable` üzerinden 512x512 şeffaf Canvas'a 16 kare olarak çizdirildi ve animasyonlu WebP oluşturuldu.
-  - **Akıllı Thumbnail Fallback'i:** Çözümlenemeyen veya bozuk başlıklı video/Lottie çıkartmaları için Telegram önizleme küçük resmi (`fallbackThumbnailBytes`) kullanılarak iki kareli geçerli animasyonlu WebP üretildi; aktarımın çökmesi engellendi.
+### 2. Bazı Çıkartmaların WhatsApp'a Eklenememesi & Hata Vermesi (`handleStickerPackPreviewResult`)
+- **Öncelik:** 🔴 **YÜKSEK (2. Öncelik)**
+- **Durum:** ⏳ **YAPILACAK / İNCELENİYOR**
+- **Sorun Tanımı:**
+  - Çok parçalı veya tekil çıkartma paketleri WhatsApp'a eklenirken bazı parçalar sorunsuz eklenirken (örn. `@kynik` paketinin Parça 2, 3 ve 4'ü başarıyla eklendi), bazı parçalarda (örn. `@kynik Part 1` ve `bruuh Part 1, Part 2`) ekleme işlemi başarısız olmaktadır.
+  - Uygulama içinde ilgili parçanın altında kırmızı renkli `handleStickerPackPreviewResult...` hata mesajı listelenmekte, WhatsApp tarafında ise *"There's a problem with the sticker pack. Unable to add to WhatsApp."* (Çıkartma paketinde bir sorun var. WhatsApp'a eklenemiyor.) sistem uyarısı (toast) çıkmaktadır.
 
----
+- **Örnek Hata Ekran Görüntüleri:**
+  | `bruuh` Paketi: Parça 1 ve 2 Hata Aldı | `@kynik` Paketi: Parça 1 Hata Aldı, Parça 2-4 Eklendi |
+  | :---: | :---: |
+  | ![bruuh Hata Ekranı](assets/screenshots/error_bruuh_preview_result.jpg) | ![kynik WhatsApp Doğrulama Hatası](assets/screenshots/error_kynik_whatsapp_validation.jpg) |
+  | *Görsel 1: `bruuh` video paketinde her iki parça da `handleStickerPackPreviewResult` hatasıyla başarısız oldu.* | *Görsel 2: `kynik` paketinde 2, 3 ve 4. parçalar onaylanırken 1. parçada WhatsApp "There's a problem with the sticker pack" uyarısıyla reddetti.* |
 
-### 3. Çok Parçalı Paketlerde Sonsuz Döngü / Askıda Kalma Sorunu
-- **Durum:** ✅ **ÇÖZÜLDÜ & DOĞRULANDI** (Sorun Çözüldü)
-- **Test Sonucu:** Android 16 (crDroid 12.13, KernelSU root) fiziksel cihaz üzerinde ADB ile canlı olarak test edilmiş; çok parçalı paketlerin parçalara ayrılması, her bir parçanın WhatsApp'a eklenmesi ve kullanıcı kontrollü bir sonraki parçaya geçiş adımlarının sorunsuz çalıştığı doğrulanmıştır.
-- **Tespit Edilen Kök Neden:**
-  - `whatsapp_stickers_handler` üçüncü taraf eklentisinin Android tarafındaki `onActivityResult` metodunda başarılı dönüş (`RESULT_OK`) ve kullanıcı iptali (`RESULT_CANCELED`) durumlarında MethodChannel `result.success(...)` metodunun çağrılmadığı, bu nedenle Flutter tarafındaki `await addStickerPack(...)` Future'ının asla tamamlanmadığı ve sonsuza kadar await'te kaldığı tespit edildi.
-  - Ayrıca 30'dan fazla çıkartma içeren paketlerde, ilk parça WhatsApp'a gönderildikten sonra WhatsApp'ın Activity lifecycle'ı ile senkronize olmadan arka planda körü körüne döngü çalıştırılması WhatsApp intent çakışmalarına ve arayüz kilitlenmelerine yol açıyordu.
-- **Yapılan İyileştirmeler:**
-  - **Yerel Kotlin Motoruna Geçiş:** Bozuk ve eski `whatsapp_stickers_handler` paketi projeden tamamen kaldırılarak yerine doğrudan projenin Android altyapısına özel `StickerContentProvider`, `StickerPackStorage` ve `WhatsAppMethodHandler` yerel sınıfları geliştirildi.
-  - **Eksiksiz Activity Result Yönetimi:** WhatsApp ekleme intent'inin (`com.whatsapp.intent.action.ENABLE_STICKER_PACK`) sonucu `onActivityResult` üzerinden dinlenerek hem `RESULT_OK` (eklendi), hem `RESULT_CANCELED` (kullanıcı iptal etti), hem de `validation_error` durumları net `WhatsAppExportResult` modeliyle Flutter'a anında ve güvenle aktarıldı.
-  - **Kullanıcı Kontrollü Çok Parçalı Aktarım Arayüzü (`_MultiPartExportSheet`):**
-    - 30'dan fazla çıkartma seçildiğinde tüm çıkartmalar ve tepsi simgeleri önce yerel olarak işlenir ve güvenle kaydedilir.
-    - Kullanıcıya parçaları (Parça 1/X, Parça 2/X...) listeleyen modern, kurumsal bir aktarım modalı sunulur.
-    - Kullanıcı WhatsApp'ta her bir parçayı onaylayıp döndüğünde ilgili parça yeşil tik ile işaretlenir ve bir sonraki parça otomatik olarak aktif hale getirilir. Kullanıcı dilediğinde süreci duraklatabilir veya "Daha Sonra Tamamla" seçeneğiyle çıkabilir. Askıda kalma ve kilitlenme sorunu tamamen ortadan kaldırıldı.
+- **Tespit Edilen Olası Kök Nedenler & WhatsApp Doğrulama (Validator) Kuralları:**
+  WhatsApp'ın yerel `AddThirdPartyStickerPackActivity` ve `StickerPackValidator` modülleri çıkartma paketlerini içeri alırken çok katı kurallarla doğrular. Parça içindeki tek bir çıkartmanın bile kural dışı olması tüm parçanın reddedilmesine yol açar:
+  1. **500 KB Boyut Sınırı Aşımı (Animated WebP Size Limit):**
+     - WhatsApp hareketli çıkartmalar için dosya başına kesinlikle en fazla **500 KB** (500 * 1024 = 512,000 bayt) limit koymuştur.
+     - `StickerProcessor` içindeki çoklu kalite düşürme adımlarına rağmen bazı karmaşık video karelerinde oluşan WebP dosyası 500 KB sınırını kıl payı aşmış ve WhatsApp doğrulayıcısına takılmış olabilir.
+  2. **Animasyon Süresi ve Kare Hızı Kısıtlamaları:**
+     - WhatsApp spesifikasyonuna göre hareketli çıkartmaların toplam süresi **en fazla 3000 ms (3 saniye)** olmalı, her bir karenin gösterim süresi ise **en az 8 ms** olmalıdır. Ayrıca animasyon sonsuz döngü (`loop count = 0`) yapmalıdır.
+  3. **Emoji Doğrulama ve Format Sorunları (Max 3 Emojis):**
+     - WhatsApp kuralı: Her çıkartma için **en az 1, en fazla 3 geçerli Unicode emojisi** bildirilmelidir.
+     - Telegram çıkartmalarından gelen emojiler arasında görünmez karakterler, birleşik varyasyon seçiciler veya 3'ten fazla emoji bulunduğunda WhatsApp paketi reddeder. `pack_preview_screen.dart` dosyasında `[sticker.emoji]` kontrolsüz iletilmektedir.
+  4. **Tepsi Simgesi (Tray Icon) İhlali ve Dosya Üzerine Yazma (Collision):**
+     - WhatsApp tepsi simgesinin kesinlikle **96x96 piksel, PNG formatında ve 50 KB altında** olmasını şart koşar.
+     - Çok parçalı aktarımda tüm parçalar aynı dizindeki tek bir `tray_icon.png` dosyasını kullanmakta ve birbirinin üzerine yazmaktadır. İlk parçanın tepsi simgesi henüz okunurken dosyanın değişmesi veya geçersiz kalması 1. parçaların hata almasına zemin hazırlamaktadır.
+  5. **WhatsApp Dahili Hata İletişimi:**
+     - WhatsApp, hata durumunda `validation_error` extra alanında doğrudan iç metot adı olan `handleStickerPackPreviewResult` veya muğlak bir mesaj dönmektedir.
 
----
-
-### 4. Sade & Kurumsal Tasarım (Neon ve Liquid Glass Efektlerinin Kaldırılması)
-- **Durum:** ✅ **YAPILDI** (Tamamlandı)
-- **Yapılan İyileştirmeler:**
-  - `AppTheme`: Neon/aşırı parlak tonlar kaldırılarak göz yormayan dengeli, modern kurumsal renk paletine (Slate 50 - 900, dengeli kurumsal mavi tonları `Color(0xFF2563EB)`) geçildi.
-  - `GlassCard`: Arka plan bulanıklığı (BackdropFilter blur), parlak kenarlıklar ve neon gölgeler kaldırıldı. Temiz, düz, yüksek kontrastlı ve kurumsal kart yapısına dönüştürüldü.
-  - `GradientButton`: Aşırı neon glow gölgeleri kaldırılarak hafif, kurumsal gölge ve dengeli buton geçişleri uygulandı.
-  - Ekranlar (`HomeScreen`, `MainNavigationScreen`, `MyPacksScreen`, `PackPreviewScreen`, `SettingsScreen`, `BotTokenGuideSheet`): Tüm kartlar, butonlar, modallar ve chip'ler kurumsal ve minimalist tasarım standartlarına uyarlandı.
-
----
-
-### 5. Sürüm Numaralandırma Kuralı (Version Increment)
-- **Durum:** ✅ **UYGULANDI**
-- **Açıklama:** Yapılan değişiklikler ve giderilen hatalar doğrultusunda `pubspec.yaml` sürümü güncellendi:
-  - `1.0.1+2` ➡️ `1.0.2+3` ➡️ `1.0.3+4` ➡️ `1.0.4+5` ➡️ `1.0.5+2006` olarak artırıldı (StickerContentProvider dosya çözümleme mimarisi, dinamik fallback motoru ve güvenli silme senkronizasyonu).
-
----
-
-### 6. Çıkartmalar Gönderilemiyor veya Paket Silinemiyor ("Sticker Dosyası Bulunamadı" Hatası)
-- **Durum:** ✅ **ÇÖZÜLDÜ & DOĞRULANDI** (Sorun Çözüldü)
-- **Test Sonucu:** Android 16 (crDroid 12.13, KernelSU root, Redmi Note 12 Pro 4G) üzerinde hem canlı ADB ContentProvider sorguları (`query`, `read`, `delete`) ile hem de kullanıcı tarafından fiziksel cihaz arayüzünde canlı WhatsApp üzerinden gönderim ve silme işlemleriyle başarıyla doğrulanmıştır. Hem mevcut paketlerin (`Lilpussi2004`) WebP ve PNG dosyaları doğrudan ve tam dosya isimleriyle okunabilmiş, hem de WhatsApp'ta yetim kalan eski paketler (`AzizKediler_by_fStikBot_part2`) için 3 çıkartmalı güvenli validator yanıtı ve saydam fallback görselleri dönülerek WhatsApp'ın kilitlenmesi engellenmiştir.
-- **Tespit Edilen Kök Nedenler:**
-  1. **ContentProvider `openAssetFile` / `openFile` Çözümleme Hatası:** WhatsApp standart URI ile (`stickers_asset/<identifier>/<file_name>`) dosya istediğinde `encodedPath` doğrudan kök dizinde (`/<file_name>`) veya yalnızca `filesDir` altında aranıyordu. Flutter dosyalarının bulunduğu `app_flutter/whatsapp_packs` dizinine, paket modeli eşleşmesine veya paket kimliğine hiç bakılmadığı için sistem doğrudan `FileNotFoundException` fırlatıyor ve WhatsApp arayüzünde Türkçe *"Sticker dosyası bulunamadı"* hatası veriliyordu.
-  2. **Eksik URI Eşleşmeleri (`UriMatcher`):** `uriMatcher` yalnızca `stickers_asset/*/*` rotasını içeriyor, WhatsApp'ın tepsi simgesi veya doğrudan dosya erişimleri için kullandığı `stickers_asset/*` ve alt yollar eksik kalıyordu.
-  3. **WhatsApp 3 Çıkartma Doğrulayıcı (Validator) Kuralı:** WhatsApp'ta ekli kalmış ancak yerelde silinmiş paketler için `STICKERS_OF_PACK` sorgusu 0 satır döndüğünde, WhatsApp dahili doğrulayıcısı paketi geçersiz sayıyor ve paket detayını açmayı ya da silmeyi *"Sticker dosyası bulunamadı"* / *"Paket dosyası mevcut değil"* hatasıyla bloke ediyordu.
-  4. **Silme Senkronizasyonu & Çok Parçalı Dizin Çakışması:** Flutter tarafında `removePack` çağrıldığında, aynı dizini paylaşan çok parçalı paketlerin dosyaları kontrolsüz silinebiliyor veya WhatsApp'a silme bildirimi gitmiyordu.
-- **Yapılan İyileştirmeler:**
-  - **Çok Katmanlı Dosya Çözümleyici (`resolveAssetFile` - `StickerContentProvider.kt`):** Gelen dosya talebi sırasıyla; doğrudan mutlak yol, `decodePath`, `StickerPackStorage` modelindeki `trayImage` ve `stickers` listesi, numerik indeks (ör. `sticker_1.webp`), `app_flutter/whatsapp_packs/<identifier>` ve türev dizinler üzerinden taranarak dosyanın fiziksel varlığı eksiksiz tespit edildi.
-  - **Dinamik Şeffaf Varlık Fallback'i (`getOrCreateFallbackAsset`):** Diskte fiziksel olarak bulunamayan veya yetim kalan çıkartmalar için sistemin `FileNotFoundException` fırlatıp WhatsApp'ı çökertmesi yerine; 96x96 şeffaf PNG veya 512x512 şeffaf WebP üretilerek WhatsApp'ın paketi hatasız açması ve kullanıcının çöp kutusu simgesiyle WhatsApp'tan kalıcı olarak silebilmesi sağlandı.
-  - **WhatsApp Uyumlu Kolon Dönüşleri (`StickerPackModels.kt`):** `toMetadataRow` ve `toStickersCursor` WhatsApp standartlarına uygun olarak yalın dosya isimlerini (`tray_icon.png`, `xxx_wa.webp`) döndürecek şekilde düzenlendi; geriye dönük uyumluluk korundu.
-  - **Güvenli Fallback Cursor'ları (`createFallbackMetadataRow` & `createFallbackStickersCursor`):** Veritabanında bulunamayan paketler sorgulandığında WhatsApp kuralı gereği 3 çıkartmalı MatrixCursor dönülerek validator kilitlenmesi önlendi.
-  - **ContentResolver Deletion Notification (`WhatsAppMethodHandler.kt` & `StickerContentProvider.kt`):** Silme işlemlerinde `metadata`, `metadata/$id` ve `stickers/$id` URI'ları tetiklenerek WhatsApp'ın önbellek senkronizasyonu sağlandı.
-  - **Güvenli Dizin Temizliği (`storage_service.dart`):** Çok parçalı paketlerde diğer parçaların dosyalarının kazara silinmesini önleyen akıllı dizin temizliği uygulandı.
+- **Yapılacak İyileştirmeler & Eylem Planı:**
+  - [ ] **Sıkı Dosya Boyutu Koruması (Strict 480 KB Ceiling):** Kodlanan her WebP'nin boyutu kaydedilmeden önce kesin olarak denetlenecek; 480 KB'ı aşan durumlarda kare sayısı veya çözünürlük kademeli düşürülerek 500 KB sınırının aşılması imkânsız kılınacak.
+  - [ ] **Emoji Filtreleme & Standartlaştırma (1-3 Emoji Sanitization):** Çıkartma emojileri taranacak; geçersiz karakterler ayıklanacak, maksimum 3 emoji sınırına kırpılacak ve boş olanlar için varsayılan güvenli emoji ("⭐") atanacak.
+  - [ ] **Parça Başına Benzersiz Tepsi Simgesi (Unique Tray Icon per Part):** Her parça için bağımsız `tray_part_1.png`, `tray_part_2.png` dosyaları oluşturulacak; 96x96 ve < 50 KB PNG formatı garanti altına alınacak.
+  - [ ] **Detaylı Hata Ayıklama (Logcat & Contextual Error Parsing):** WhatsApp'ın reddettiği çıkartmanın dosya boyutu, çözünürlüğü ve emojisi loglanarak hata mesajı kullanıcıya anlaşılır şekilde sunulacak.
 
 ---
 ---
 
-## 🇬🇧 English
+## 🇬🇧 English (Developer Summary)
 
-### 1. "Sticker Pack File Does Not Exist" Error on Deleting Pack from WhatsApp (TOP PRIORITY)
-- **Status:** ✅ **RESOLVED & VERIFIED** (Issue Fixed)
-- **Test Results:** Live tested on Android 16 physical device (crDroid 12.13, KernelSU root, Redmi Note 12 Pro 4G) using direct ADB ContentProvider queries (`query`, `read`, `delete`). Verified that existing, orphan, and deleted packs are gracefully queried and removed from WhatsApp without throwing errors.
-- **Identified Root Causes:**
-  1. **Unhandled IllegalArgumentException in ContentProvider:** When queried for a pack that did not exist in storage, `StickerContentProvider.kt` threw `IllegalArgumentException` instead of returning an empty Cursor. WhatsApp caught this IPC exception and displayed *"Sticker pack file does not exist"*, aborting the removal.
-  2. **Metadata Column Names & Missing Field:** Columns were missing WhatsApp's required `sticker_pack_` prefix and the `whatsapp_will_not_cache_stickers` column was omitted entirely.
-  3. **Missing `openFile` Implementation:** Only `openAssetFile` was implemented, causing `openFile` calls to throw `FileNotFoundException: No files supported by provider`, while `UNKNOWN_LENGTH` confused decoders.
-  4. **Delete Throwing UnsupportedOperationException:** `delete(...)` threw an exception instead of removing the record from `StickerPackStorage`.
-  5. **Non-Deterministic Pack Identifiers:** Appending `DateTime.now().millisecondsSinceEpoch` on export created phantom orphan IDs in WhatsApp whenever a pack was re-exported.
-- **Implemented Fixes:**
-  - `StickerContentProvider.kt`: Returns empty MatrixCursors for missing packs, implements `openFile`, passes exact file lengths in `AssetFileDescriptor`, and safely handles `delete(...)` with content resolver notifications.
-  - `StickerPackModels.kt`: Synchronized all 13 metadata columns with the official WhatsApp sticker specification and formatted emoji strings with comma delimiters.
-  - `StickerPackStorage.kt`: Added resilient ID normalization and timestamp-stripping fallback for querying and deleting legacy packs.
-  - `pack_preview_screen.dart`: Made pack identifiers deterministic (`${packName}_part${idx}`).
-  - `whatsapp_service.dart` & `my_packs_screen.dart`: Integrated `deleteStickerPack` MethodChannel to keep storage synchronized when deleting packs in-app.
+### 1. App Freezing & Unresponsiveness During Initial Bulk Sticker Download & Preparation (Optimization Needed)
+- **Priority:** 🔴 **HIGH (Item 1)**
+- **Status:** ⏳ **TODO / INVESTIGATING**
+- **Issue:** The freeze does *not* occur when WhatsApp itself opens; rather, it happens **immediately when the user provides the pack link, selects stickers, and first taps *"Export to WhatsApp"***. At this stage, the app fetches each sticker from Telegram servers one by one, extracts video frames, and converts them to Animated WebP locally. During this sequential bulk preparation process, the main UI thread completely freezes, touch becomes unresponsive, progress freezes, and there is a high risk of an ANR (Application Not Responding) dialog.
+- **Root Causes:**
+  1. **Main UI Isolate Blocking:** CPU-heavy decoding, canvas composition, and WebP encoding in `StickerProcessor` run synchronously on Flutter's main thread during this preparation loop.
+  2. **Sequential Pipeline Bottleneck:** Downloading stickers from Telegram one by one and sequentially processing each one locks the UI for minutes (especially on 30-120 sticker packs).
+  3. **High Memory & GC Pressure:** Heavy frame allocation and decoding creates frequent garbage collection pauses and interface lockups.
+- **Action Items:**
+  - Offload heavy image operations to background Dart Isolates (`Isolate.run` / worker pool) so the UI remains fluid at 60/120 FPS during preparation.
+  - Implement concurrent downloading and processing pipelines (bounded concurrency, e.g. 3-4 parallel workers).
+  - Explore hardware-accelerated native Android WebP encoding.
+  - Provide smooth, non-blocking real-time progress indicators with safe cancellation support.
 
 ---
 
-### 2. Animated Stickers Appearing Static in WhatsApp
-- **Status:** ✅ **RESOLVED & VERIFIED** (Issue Fixed)
-- **Test Results:** Live tested on Android 16 (crDroid 12.13, KernelSU root, Redmi Note 12 Pro 4G) using a 40-sticker animated Telegram video pack ("Aziz Kediler"). WhatsApp native sticker dialog recognized every item via `animated_sticker_view`. The pack was successfully imported into WhatsApp, verified in WhatsApp's internal database (`third_party_whitelist_packs`) with `is_animated_pack = 1`, and stored with valid WebP `ANIM`/`ANMF` chunks and unique frames.
-- **Identified Root Causes:**
-  1. **Missing `is_animated_sticker` Column in ContentProvider:** In `StickerPackModels.kt`, `STICKER_COLUMNS` omitted `is_animated_sticker`. WhatsApp defaulted each sticker to static (0) when this column was missing.
-  2. **Android `MediaMetadataRetriever` Seeking Bug in VP9 WebM:** Telegram animated video stickers are VP9 WebMs with only a single keyframe at timestamp 0. `MediaMetadataRetriever.getScaledFrameAtTime(...)` failed to seek inter-frames and returned the exact same keyframe 0 for every timestamp, resulting in motionless WebPs where all extracted frames were byte-identical.
-  3. **Lack of Lottie (.tgs) Animated WebP Pipeline:** Vector Lottie stickers had no dedicated multi-frame renderer for animated WebP export.
-  4. **Premature Export Aborts on Malformed Video Headers:** Single video stickers with non-standard container headers caused the entire export process to throw and cancel.
-- **Implemented Fixes:**
-  - **`is_animated_sticker` Column Added (`StickerPackModels.kt`):** Added `is_animated_sticker` to `STICKER_COLUMNS` and dynamically populated `if (animatedStickerPack) 1 else 0` in `toStickersCursor()`.
-  - **Sequential MediaExtractor + MediaCodec Decoder Pipeline (`MainActivity.kt`):** Replaced non-seeking `MediaMetadataRetriever` with sequential `MediaExtractor` and `MediaCodec` (VP9) decoding. Converts raw planar I420/semiplanar NV12 buffers to NV21 and outputs high-quality compressed JPEGs across the timeline (verified 18 distinct frames with unique MD5 hashes).
-  - **Lottie (.tgs) Canvas Renderer (`StickerProcessor.dart`):** Implemented `processLottieSticker`, unzipping `.tgs` streams, loading `LottieComposition`, and rendering 16 frames onto a 512x512 transparent canvas to assemble compliant animated WebPs.
-  - **Graceful Thumbnail Fallback:** Added `fallbackThumbnailBytes` handling to prevent export failures on malformed video/Lottie stickers by generating valid 2-frame looping animated WebPs from cached thumbnails.
-
----
-
-### 3. Multi-Part Pack Export Infinite Loop / Freeze
-- **Status:** ✅ **RESOLVED & VERIFIED** (Issue Fixed)
-- **Test Results:** Live tested on Android 16 physical device (crDroid 12.13, KernelSU root) via ADB; verified that multi-part pack splitting, WhatsApp intent callbacks, and user-guided sequential part importing function flawlessly without freezes.
-- **Identified Root Cause:**
-  - In the third-party `whatsapp_stickers_handler` plugin, the Android `onActivityResult` method failed to invoke MethodChannel `result.success(...)` upon `RESULT_OK` or `RESULT_CANCELED`. Consequently, the Flutter `await addStickerPack(...)` future never resolved and hung indefinitely.
-  - Running an unguided loop for packs split into multiple parts without respecting the Android Activity return lifecycle caused race conditions and UI freezes.
-- **Implemented Fixes:**
-  - **Native Kotlin Integration:** Completely eliminated the buggy `whatsapp_stickers_handler` package and implemented native `StickerContentProvider`, `StickerPackStorage`, and `WhatsAppMethodHandler` directly within the project.
-  - **Deterministic Activity Result Handling:** Properly handles WhatsApp's `AddThirdPartyStickerPackActivity` callbacks, accurately returning `added`, `cancelled`, and `validation_error` statuses back to Dart.
-  - **User-Guided Multi-Part Batch Sheet (`_MultiPartExportSheet`):**
-    - Large packs (> 30 stickers) are processed and locally stored ahead of time.
-    - An interactive corporate modal sheet guides the user through each part (e.g. Part 1/3, Part 2/3), indicating completion with checkmarks and allowing smooth, user-controlled progression with cancel/resume support.
-
----
-
-### 4. Clean & Corporate UI (Eliminate Neon Colors & Liquid Glass)
-- **Status:** ✅ **DONE** (Completed)
-- **Completed Improvements:**
-  - `AppTheme`: Neon / overly saturated vibrant colors replaced with a balanced, corporate slate palette and professional blues.
-  - `GlassCard`: BackdropFilter blurs, glossy glowing borders, and intense neon shadows completely removed. Replaced with clean, crisp, solid corporate cards.
-  - `GradientButton`: Neon glow shadows eliminated; simplified to clean, elegant button styling.
-  - Screens (`HomeScreen`, `MainNavigationScreen`, `MyPacksScreen`, `PackPreviewScreen`, `SettingsScreen`, `BotTokenGuideSheet`): Updated to maintain consistent, clean, and professional visual hierarchy across both dark and light modes.
-
----
-
-### 5. Application Versioning Rule
-- **Status:** ✅ **APPLIED**
-- **Note:** Following the native multi-part WhatsApp export engine upgrade, StickerContentProvider removal fix, and animated sticker pipeline implementation, `pubspec.yaml` was incremented:
-  - `1.0.1+2` ➡️ `1.0.2+3` ➡️ `1.0.3+4` ➡️ `1.0.4+5` ➡️ `1.0.5+2006`.
-
----
-
-### 6. Stickers Cannot Be Sent or Pack Cannot Be Deleted ("Sticker File Not Found" Error)
-- **Status:** ✅ **RESOLVED & VERIFIED** (Issue Fixed)
-- **Test Results:** Live tested on Android 16 physical device (crDroid 12.13, KernelSU root, Redmi Note 12 Pro 4G) using both direct ADB ContentProvider queries (`query`, `read`, `delete`) and direct in-app testing by user on WhatsApp for sending and deleting stickers. Verified that existing packs (`Lilpussi2004`) stream WebP and PNG assets by simple and encoded filenames, and orphan/deleted packs (`AzizKediler_by_fStikBot_part2`) receive compliant 3-sticker validator matrices and transparent asset fallbacks without throwing `FileNotFoundException`.
-- **Identified Root Causes:**
-  1. **ContentProvider File Resolution Flaw (`openAssetFile`):** When WhatsApp queried asset URIs (`stickers_asset/<identifier>/<file_name>`), the provider looked for files strictly at root `/` or in `filesDir`. It ignored Flutter's `app_flutter/whatsapp_packs` directory, the pack identifier, and `StickerPackStorage` paths, throwing unhandled `FileNotFoundException` and displaying *"Sticker dosyası bulunamadı"* in WhatsApp.
-  2. **Missing UriMatcher Patterns:** `uriMatcher` only supported `stickers_asset/*/*`, omitting `stickers_asset/*` and subpaths used by WhatsApp for tray icon queries.
-  3. **WhatsApp 3-Sticker Validator Rule:** Returning 0 rows for missing/orphan packs triggered WhatsApp's validator rejection, causing the UI to lock up and block pack details and deletions.
-  4. **Multi-Part Storage Directory Collision:** In Flutter's `removePack`, deleting shared directories broke remaining parts or left phantom entries in WhatsApp.
-- **Implemented Fixes:**
-  - **Multi-Tier Asset Resolver (`resolveAssetFile` - `StickerContentProvider.kt`):** Resolves assets across direct paths, `decodePath`, model metadata (`trayImage`, `stickers`), numeric indices, `app_flutter/whatsapp_packs`, and storage fallback directories.
-  - **Transparent Placeholder Fallback (`getOrCreateFallbackAsset`):** Instead of throwing `FileNotFoundException`, serves valid 96x96 transparent PNGs or 512x512 WebPs so WhatsApp never crashes and users can cleanly open and remove stuck packs.
-  - **Standardized Column Filenames (`StickerPackModels.kt`):** Conforms to WhatsApp specifications by exposing clean relative filenames while retaining backwards-compatible path decoding.
-  - **Resilient Fallback Cursors (`createFallbackMetadataRow` & `createFallbackStickersCursor`):** Returns 3 placeholder stickers for missing packs to satisfy WhatsApp's validator requirements.
-  - **Synchronized Deletion Notifications (`WhatsAppMethodHandler.kt` & `StickerContentProvider.kt`):** Triggers `ContentResolver.notifyChange` on `metadata` and `stickers` endpoints upon pack deletion.
-  - **Safe Directory Cleanup (`storage_service.dart`):** Prevents accidental deletion of directories shared by multi-part packs.
+### 2. Sticker Pack Import Failures in WhatsApp (`handleStickerPackPreviewResult`)
+- **Priority:** 🔴 **HIGH (Item 2)**
+- **Status:** ⏳ **TODO / INVESTIGATING**
+- **Issue:** Certain pack parts fail to import into WhatsApp with the error `handleStickerPackPreviewResult...` and a native toast saying *"There's a problem with the sticker pack. Unable to add to WhatsApp"*, while other parts in the same pack succeed (e.g. `@kynik Part 1` failed, but Parts 2, 3, and 4 succeeded).
+- **Screenshots:**
+  - `assets/screenshots/error_bruuh_preview_result.jpg` (`bruuh` Parts 1 & 2 failed)
+  - `assets/screenshots/error_kynik_whatsapp_validation.jpg` (`kynik` Part 1 rejected by WhatsApp validator)
+- **Suspected Causes:**
+  1. **Animated WebP > 500 KB:** Complex frames exceeding WhatsApp's strict 500 KB limit.
+  2. **Duration / FPS Limits:** Animations must be $\le 3000\text{ ms}$, frame duration $\ge 8\text{ ms}$, and loop count 0.
+  3. **Emoji Validation:** Missing, malformed, or $> 3$ emojis per sticker.
+  4. **Tray Icon Collisions:** Multi-part exports overwrite a single `tray_icon.png` in the shared directory.
+- **Action Items:**
+  - Enforce strict size guards ($\le 480\text{ KB}$) by downscaling resolution or reducing frames.
+  - Sanitize sticker emojis (ensure 1 to 3 valid Unicode emojis).
+  - Generate unique tray icons per part (`tray_part_X.png`) strictly sized at 96x96 PNG ($< 50\text{ KB}$).
+  - Improve error reporting from WhatsApp's intent result for transparent debugging.
