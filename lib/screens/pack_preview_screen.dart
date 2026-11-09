@@ -40,6 +40,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
   TelegramSticker? _activePreviewSticker;
 
   bool _isProcessing = false;
+  bool _isCancelled = false;
   double _progress = 0.0;
   String _statusText = '';
   bool _selectAll = true;
@@ -368,8 +369,9 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
 
     setState(() {
       _isProcessing = true;
+      _isCancelled = false;
       _progress = 0;
-      _statusText = 'Hazırlanıyor...';
+      _statusText = 'Başlatılıyor...';
     });
 
     try {
@@ -381,8 +383,12 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
       // Split into WhatsApp packs (max 30 each)
       final chunks = _whatsappService.splitIntoPacks(selected);
       final preparedParts = <_PreparedPackPart>[];
+      final totalCount = selected.length;
+      int completedTotalCount = 0;
 
       for (int chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
+        if (_isCancelled || !mounted) return;
+
         final chunk = chunks[chunkIdx];
         final partSuffix = chunks.length > 1 ? ' Part ${chunkIdx + 1}' : '';
         final rawPackName = '${widget.stickerSet.title}$partSuffix';
@@ -395,97 +401,92 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
           '${widget.stickerSet.name}$idPartSuffix',
         );
 
-        final stickerData = <Map<String, dynamic>>[];
-        String? trayPath;
-
-        for (int i = 0; i < chunk.length; i++) {
-          final sticker = chunk[i];
-          final totalIdx = chunkIdx * 30 + i;
-          final totalCount = selected.length;
-
-          final isAnimatedPack =
-              widget.stickerSet.isAnimated ||
-              widget.stickerSet.isVideo ||
-              selected.any((s) => s.isAnimated || s.isVideo);
-
-          setState(() {
-            _progress = (totalIdx + 1) / totalCount;
-            _statusText = sticker.isVideo
-                ? 'Video işleniyor... (${totalIdx + 1}/$totalCount)'
-                : 'İndiriliyor... (${totalIdx + 1}/$totalCount)';
-          });
-
-          String processedPath;
-          if (sticker.isVideo) {
-            // Download the actual .webm video file
-            final videoPath = await _telegramService.downloadSticker(
-              sticker,
-              widget.stickerSet.name,
-            );
-            final thumbId = sticker.thumbFileId ?? sticker.fileId;
-            var thumbBytes = _thumbnails[thumbId];
-            thumbBytes ??= await _telegramService.downloadThumbnail(thumbId);
-
-            processedPath = await _stickerProcessor.processVideoSticker(
-              videoPath,
-              outputDir,
-              fallbackThumbnailBytes: thumbBytes,
-            );
-          } else if (sticker.isAnimated) {
-            // Lottie / animated sticker
-            final animatedPath = await _telegramService.downloadSticker(
-              sticker,
-              widget.stickerSet.name,
-            );
-            final thumbId = sticker.thumbFileId ?? sticker.fileId;
-            var thumbBytes = _thumbnails[thumbId];
-            thumbBytes ??= await _telegramService.downloadThumbnail(thumbId);
-
-            processedPath = await _stickerProcessor.processLottieSticker(
-              animatedPath,
-              outputDir,
-              fallbackThumbnailBytes: thumbBytes,
-            );
-          } else {
-            // Static WebP sticker
-            final downloadedPath = await _telegramService.downloadSticker(
-              sticker,
-              widget.stickerSet.name,
-            );
-            processedPath = await _stickerProcessor.processSticker(
-              downloadedPath,
-              outputDir,
-              asAnimated: isAnimatedPack,
-            );
-          }
-
-          // Generate tray icon from first sticker of each chunk
-          if (i == 0) {
-            setState(() {
-              _statusText = 'Tepsi simgesi üretiliyor...';
-            });
-            trayPath = await _stickerProcessor.generateTrayIcon(
-              processedPath,
-              outputDir,
-            );
-          }
-
-          stickerData.add({
-            'path': processedPath,
-            'emojis': [sticker.emoji],
-          });
-        }
-
-        // Ensure we have a tray icon
-        trayPath ??= await _stickerProcessor.generateTrayIcon(
-          stickerData.first['path'] as String,
-          outputDir,
-        );
-
         final isAnimatedPack =
             widget.stickerSet.isAnimated ||
             widget.stickerSet.isVideo ||
             selected.any((s) => s.isAnimated || s.isVideo);
+
+        final stickerDataSlots =
+            List<Map<String, dynamic>?>.filled(chunk.length, null);
+
+        // Bounded concurrency worker pool (3 parallel workers)
+        // Combines network I/O with background isolate image processing
+        const int maxConcurrency = 3;
+        final int workerCount =
+            chunk.length < maxConcurrency ? chunk.length : maxConcurrency;
+        int nextWorkerIndex = 0;
+
+        Future<void> runStickerWorker() async {
+          while (true) {
+            if (_isCancelled || !mounted) return;
+            int itemIndex;
+            if (nextWorkerIndex >= chunk.length) return;
+            itemIndex = nextWorkerIndex++;
+            final sticker = chunk[itemIndex];
+
+            if (mounted && !_isCancelled) {
+              setState(() {
+                _statusText = sticker.isVideo
+                    ? 'Video işleniyor... (${completedTotalCount + 1}/$totalCount)'
+                    : 'Çıkartma hazırlanıyor... (${completedTotalCount + 1}/$totalCount)';
+              });
+            }
+
+            try {
+              final processedPath = await _prepareSingleSticker(
+                sticker: sticker,
+                outputDir: outputDir,
+                isAnimatedPack: isAnimatedPack,
+              );
+
+              if (_isCancelled || !mounted) return;
+
+              stickerDataSlots[itemIndex] = {
+                'path': processedPath,
+                'emojis': [sticker.emoji],
+              };
+
+              completedTotalCount++;
+              if (mounted && !_isCancelled) {
+                setState(() {
+                  _progress =
+                      (completedTotalCount / totalCount).clamp(0.0, 1.0);
+                  _statusText =
+                      'Hazırlanıyor: $completedTotalCount / $totalCount (%${(_progress * 100).toInt()})';
+                });
+              }
+            } catch (err) {
+              debugPrint('Error preparing sticker ${sticker.fileId}: $err');
+              rethrow;
+            }
+          }
+        }
+
+        final workers = List.generate(workerCount, (_) => runStickerWorker());
+        await Future.wait(workers);
+
+        if (_isCancelled || !mounted) return;
+
+        final stickerData =
+            stickerDataSlots.whereType<Map<String, dynamic>>().toList();
+        if (stickerData.length < 3) {
+          throw Exception('Bu parçada en az 3 geçerli çıkartma hazırlanamadı.');
+        }
+
+        // Generate unique tray icon per part (prevents multi-part collision)
+        if (mounted && !_isCancelled) {
+          setState(() {
+            _statusText = 'Tepsi simgesi üretiliyor... (Parça ${chunkIdx + 1})';
+          });
+        }
+        final trayFileName = 'tray_$packId.png';
+        final trayPath = await _stickerProcessor.generateTrayIcon(
+          stickerData.first['path'] as String,
+          outputDir,
+          fileName: trayFileName,
+        );
+
+        if (_isCancelled || !mounted) return;
 
         final partItem = _PreparedPackPart(
           index: chunkIdx,
@@ -517,6 +518,8 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
           ),
         );
       }
+
+      if (_isCancelled || !mounted) return;
 
       // Finish processing state
       if (mounted) {
@@ -562,7 +565,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
       }
     } catch (e, stackTrace) {
       debugPrint('❌ WhatsApp Export Error: $e\n$stackTrace');
-      if (mounted) {
+      if (mounted && !_isCancelled) {
         _showSnackBar(
           'Hata: ${e.toString().replaceAll('Exception: ', '')}',
           isError: true,
@@ -576,6 +579,93 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
           _statusText = '';
         });
       }
+    }
+  }
+
+  Future<String> _prepareSingleSticker({
+    required TelegramSticker sticker,
+    required String outputDir,
+    required bool isAnimatedPack,
+  }) async {
+    if (sticker.isVideo) {
+      final videoPath = await _telegramService.downloadSticker(
+        sticker,
+        widget.stickerSet.name,
+      );
+      final thumbId = sticker.thumbFileId ?? sticker.fileId;
+      var thumbBytes = _thumbnails[thumbId];
+      thumbBytes ??= await _telegramService.downloadThumbnail(thumbId);
+
+      return await _stickerProcessor.processVideoSticker(
+        videoPath,
+        outputDir,
+        fallbackThumbnailBytes: thumbBytes,
+      );
+    } else if (sticker.isAnimated) {
+      final animatedPath = await _telegramService.downloadSticker(
+        sticker,
+        widget.stickerSet.name,
+      );
+      final thumbId = sticker.thumbFileId ?? sticker.fileId;
+      var thumbBytes = _thumbnails[thumbId];
+      thumbBytes ??= await _telegramService.downloadThumbnail(thumbId);
+
+      return await _stickerProcessor.processLottieSticker(
+        animatedPath,
+        outputDir,
+        fallbackThumbnailBytes: thumbBytes,
+      );
+    } else {
+      final downloadedPath = await _telegramService.downloadSticker(
+        sticker,
+        widget.stickerSet.name,
+      );
+      return await _stickerProcessor.processSticker(
+        downloadedPath,
+        outputDir,
+        asAnimated: isAnimatedPack,
+      );
+    }
+  }
+
+  void _cancelExport() {
+    if (!_isProcessing) return;
+    setState(() {
+      _isCancelled = true;
+      _isProcessing = false;
+      _progress = 0;
+      _statusText = '';
+    });
+    _showSnackBar('WhatsApp\'a aktarım işlemi iptal edildi.');
+  }
+
+  Future<void> _confirmAndCancelExport() async {
+    final shouldCancel = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.isDark(ctx)
+            ? AppTheme.surfaceDark
+            : AppTheme.surfaceLightMode,
+        title: const Text('Aktarımı İptal Et?'),
+        content: const Text(
+          'Çıkartmalar hazırlanıyor. İşlemi iptal etmek istiyor musunuz?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Devam Et'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+            child: const Text('İptal Et'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldCancel == true && mounted) {
+      _cancelExport();
     }
   }
 
@@ -803,18 +893,32 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
     final totalCount = set.stickers.length;
     final filtered = _filteredStickers;
 
-    return Scaffold(
-      backgroundColor: AppTheme.getBackground(context),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back_ios_rounded,
-            size: 20,
-            color: AppTheme.getText(context),
+    return PopScope(
+      canPop: !_isProcessing,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_isProcessing) {
+          _confirmAndCancelExport();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.getBackground(context),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          leading: IconButton(
+            icon: Icon(
+              Icons.arrow_back_ios_rounded,
+              size: 20,
+              color: AppTheme.getText(context),
+            ),
+            onPressed: () {
+              if (_isProcessing) {
+                _confirmAndCancelExport();
+              } else {
+                Navigator.pop(context);
+              }
+            },
           ),
-          onPressed: () => Navigator.pop(context),
-        ),
         title: Column(
           children: [
             Text(
@@ -1228,88 +1332,135 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Progress bar
                   if (_isProcessing) ...[
                     Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              _statusText,
-                              style: const TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 13,
+                            Expanded(
+                              child: Text(
+                                _statusText,
+                                style: TextStyle(
+                                  color: isDark
+                                      ? AppTheme.textPrimary
+                                      : const Color(0xFF1E293B),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            const SizedBox(width: 8),
                             Text(
                               '${(_progress * 100).toInt()}%',
                               style: const TextStyle(
                                 color: AppTheme.accentPrimary,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 10),
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: _progress,
-                            minHeight: 6,
-                            backgroundColor: AppTheme.backgroundDark,
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                              AppTheme.accentPrimary,
-                            ),
+                          borderRadius: BorderRadius.circular(6),
+                          child: TweenAnimationBuilder<double>(
+                            tween: Tween<double>(begin: 0.0, end: _progress),
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeOutCubic,
+                            builder: (context, val, _) {
+                              return LinearProgressIndicator(
+                                value: val,
+                                minHeight: 7,
+                                backgroundColor: isDark
+                                    ? AppTheme.surfaceDarkElevated
+                                    : const Color(0xFFE2E8F0),
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                  AppTheme.accentPrimary,
+                                ),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _cancelExport,
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: AppTheme.error,
+                            ),
+                            label: const Text(
+                              'İşlemi İptal Et',
+                              style: TextStyle(
+                                color: AppTheme.error,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(
+                                color: AppTheme.error.withAlpha(90),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
-                  ],
-                  // Info row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '$selectedCount / $totalCount seçili',
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
+                  ] else ...[
+                    // Info row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '$selectedCount / $totalCount seçili',
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
-                      if (selectedCount > 30)
-                        StatusBadge(
-                          label:
-                              '${(selectedCount / 30).ceil()} parça paket olacak',
-                          color: AppTheme.warning,
-                          icon: Icons.splitscreen_rounded,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: GradientButton(
-                      text: 'WhatsApp\'a Aktar',
-                      icon: Icons.send_rounded,
-                      gradient: AppTheme.whatsappGradient,
-                      isLoading: _isProcessing,
-                      onPressed: _isProcessing || selectedCount < 3
-                          ? null
-                          : _exportToWhatsApp,
+                        if (selectedCount > 30)
+                          StatusBadge(
+                            label:
+                                '${(selectedCount / 30).ceil()} parça paket olacak',
+                            color: AppTheme.warning,
+                            icon: Icons.splitscreen_rounded,
+                          ),
+                      ],
                     ),
-                  ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: GradientButton(
+                        text: 'WhatsApp\'a Aktar',
+                        icon: Icons.send_rounded,
+                        gradient: AppTheme.whatsappGradient,
+                        isLoading: false,
+                        onPressed: selectedCount < 3
+                            ? null
+                            : _exportToWhatsApp,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _placeholderIcon(String emoji, {double size = 26}) {
     final isDark = AppTheme.isDark(context);

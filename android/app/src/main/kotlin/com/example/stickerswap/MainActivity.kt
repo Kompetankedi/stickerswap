@@ -2,6 +2,8 @@ package com.example.stickerswap
 
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
@@ -17,6 +19,8 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.stickerswap/share"
@@ -233,6 +237,83 @@ class MainActivity : FlutterActivity() {
 
                     runOnUiThread {
                         result.success(frames)
+                    }
+                }.start()
+            } else if (call.method == "compressStaticWebP") {
+                val inputPath = call.argument<String>("inputPath")
+                val outputPath = call.argument<String>("outputPath")
+                if (inputPath == null || outputPath == null) {
+                    result.error("INVALID_ARG", "inputPath and outputPath cannot be null", null)
+                    return@setMethodCallHandler
+                }
+
+                Thread {
+                    try {
+                        val srcBitmap = BitmapFactory.decodeFile(inputPath)
+                        if (srcBitmap == null) {
+                            runOnUiThread { result.error("DECODE_FAIL", "Cannot decode static sticker: $inputPath", null) }
+                            return@Thread
+                        }
+
+                        val targetSize = 512
+                        val padding = 16
+                        val maxDraw = targetSize - (padding * 2)
+
+                        val srcW = srcBitmap.width
+                        val srcH = srcBitmap.height
+                        val scale = minOf(maxDraw.toFloat() / srcW, maxDraw.toFloat() / srcH)
+                        val dstW = (srcW * scale).toInt().coerceAtLeast(1)
+                        val dstH = (srcH * scale).toInt().coerceAtLeast(1)
+
+                        val scaledBitmap = Bitmap.createScaledBitmap(srcBitmap, dstW, dstH, true)
+                        if (scaledBitmap != srcBitmap) {
+                            srcBitmap.recycle()
+                        }
+
+                        val finalBitmap = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
+                        val canvas = Canvas(finalBitmap)
+                        val left = ((targetSize - dstW) / 2).toFloat()
+                        val top = ((targetSize - dstH) / 2).toFloat()
+                        canvas.drawBitmap(scaledBitmap, left, top, null)
+                        scaledBitmap.recycle()
+
+                        val format = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            Bitmap.CompressFormat.WEBP_LOSSY
+                        } else {
+                            @Suppress("DEPRECATION")
+                            Bitmap.CompressFormat.WEBP
+                        }
+
+                        val outFile = File(outputPath)
+                        outFile.parentFile?.mkdirs()
+
+                        var quality = 85
+                        var stream = ByteArrayOutputStream()
+                        finalBitmap.compress(format, quality, stream)
+
+                        if (stream.size() > 100 * 1024) {
+                            quality = 70
+                            stream = ByteArrayOutputStream()
+                            finalBitmap.compress(format, quality, stream)
+                        }
+                        if (stream.size() > 100 * 1024) {
+                            quality = 50
+                            stream = ByteArrayOutputStream()
+                            finalBitmap.compress(format, quality, stream)
+                        }
+
+                        FileOutputStream(outFile).use { fos ->
+                            fos.write(stream.toByteArray())
+                        }
+                        finalBitmap.recycle()
+
+                        runOnUiThread {
+                            result.success(outputPath)
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            result.error("NATIVE_COMPRESS_ERROR", e.message, null)
+                        }
                     }
                 }.start()
             } else {

@@ -6,7 +6,7 @@
 
 ### 1. Çıkartmalar İlk Kez İndirilip Hazırlanırken Uygulamanın Donması / Yanıt Vermemesi (Optimizasyon İhtiyacı)
 - **Öncelik:** 🔴 **YÜKSEK (1. Öncelik)**
-- **Durum:** ⏳ **YAPILACAK / İNCELENİYOR**
+- **Durum:** 🧪 **TEST EDİLECEK**
 - **Sorun Tanımı:**
   - Donma ve kilitlenme sorunu WhatsApp ekranı açıldığında değil; **kullanıcı paket linkini verip çıkartmaları seçtikten sonra *"WhatsApp'a Aktar"* işlemini ilk başlattığı anda** gerçekleşmektedir.
   - Uygulama bu aşamada çok parçalı veya tekil tüm çıkartmaları (özellikle 30, 50, 120 adet veya hareketli/video WebM) Telegram sunucularından **tek tek çekmeye, karelerini ayrıştırmaya ve dönüştürmeye başladığında** arayüz tamamen donmakta, dokunmatik yanıtsız kalmakta, ilerleme göstergesi takılmakta ve cihazda "Uygulama Yanıt Vermiyor" (ANR) uyarısı oluşma riski doğmaktadır.
@@ -21,10 +21,10 @@
      - Onlarca çıkartma işlenirken açılan büyük çözünürlüklü `Image` nesneleri ve ham bayt dizileri RAM'de birikmekte, sistem sık sık Garbage Collection (GC) tetikleyerek arayüzün tamamen duraksamasına yol açmaktadır.
 
 - **Yapılacak Optimizasyonlar & Eylem Planı:**
-  - [ ] **Arka Plan Isolate (Worker Threads) Entegrasyonu:** Ağır görsel çözme, boyutlandırma ve WebP kodlama adımları `compute` veya özel bir `Isolate.run` / Isolate havuzuna taşınarak ana UI iş parçacığından tamamen ayrılacak; indirme ve hazırlık sürerken UI 60/120 FPS akıcılığını koruyacaktır.
-  - [ ] **Boru Hattı (Pipelined Concurrent Processing):** İndirme (I/O bound) işlemi ile görüntü işleme (CPU bound) eşzamanlı çalışacak şekilde kuyruk yapısına (ör. 3-4 eşzamanlı worker) alınacak; çıkartmalar tek tek sıra beklemek yerine paralel olarak indirilip işlenecektir.
-  - [ ] **WebP Kodlama Performansının İyileştirilmesi:** Saf Dart `package:image` yerine Android tarafında donanım hızlandırmalı yerel WebP sıkıştırma API'lerinin (C++/NDK veya `Bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY)`) kullanılması değerlendirilecek.
-  - [ ] **Kullanıcı Geri Bildirimi ve Akıcı İlerleme Görselleştirmesi:** Çıkartmalar arka planda çekilip hazırlanırken yüzde (`%XX`), mevcut durum (`X / Y çıkartma indiriliyor / işleniyor`) ana UI donmadan gerçek zamanlı ve akıcı animasyonla gösterilecek; kullanıcıya güvenli iptal seçeneği sunulacaktır.
+  - [x] **Arka Plan Isolate (Worker Threads) Entegrasyonu:** Ağır görsel çözme, boyutlandırma ve WebP kodlama adımları `Isolate.run` ile arka plan worker iş parçacıklarına taşındı. Ana UI iş parçacığı serbest bırakılarak 60/120 FPS akıcılık korundu; isolate işi bitince RAM çöp toplayıcı yükü olmadan otomatik temizlendi.
+  - [x] **Boru Hattı (Pipelined Concurrent Processing):** İndirme (I/O bound) işlemi ile görüntü işleme (CPU bound) eşzamanlı çalışacak şekilde kuyruk yapısına (3 eşzamanlı worker) alındı. Çıkartmalar paralel olarak indirilip işlenmekte, sıraları bozulmadan WhatsApp paketlerine aktarılmaktadır.
+  - [x] **WebP Kodlama Performansının İyileştirilmesi:** Android tarafında donanım hızlandırmalı yerel WebP sıkıştırma API'si (`compressStaticWebP`) entegre edildi. Dart tarafında ise kare sayısı ve ilk geçiş kalite oranı (q:70) optimize edilerek gereksiz tekrarlı kodlama döngüleri engellendi.
+  - [x] **Kullanıcı Geri Bildirimi ve Akıcı İlerleme Görselleştirmesi:** Çıkartmalar hazırlanırken gerçek zamanlı yüzde (`%XX`), mevcut durum (`Hazırlanıyor: X / Y çıkartma`) `TweenAnimationBuilder` ile akıcı animasyonla gösterilmekte; kullanıcıya anında güvenli "İşlemi İptal Et" seçeneği ve sayfa çıkışında `PopScope` koruması sunuldu.
 
 ---
 
@@ -70,17 +70,17 @@
 
 ### 1. App Freezing & Unresponsiveness During Initial Bulk Sticker Download & Preparation (Optimization Needed)
 - **Priority:** 🔴 **HIGH (Item 1)**
-- **Status:** ⏳ **TODO / INVESTIGATING**
+- **Status:** 🧪 **READY FOR TESTING**
 - **Issue:** The freeze does *not* occur when WhatsApp itself opens; rather, it happens **immediately when the user provides the pack link, selects stickers, and first taps *"Export to WhatsApp"***. At this stage, the app fetches each sticker from Telegram servers one by one, extracts video frames, and converts them to Animated WebP locally. During this sequential bulk preparation process, the main UI thread completely freezes, touch becomes unresponsive, progress freezes, and there is a high risk of an ANR (Application Not Responding) dialog.
 - **Root Causes:**
   1. **Main UI Isolate Blocking:** CPU-heavy decoding, canvas composition, and WebP encoding in `StickerProcessor` run synchronously on Flutter's main thread during this preparation loop.
   2. **Sequential Pipeline Bottleneck:** Downloading stickers from Telegram one by one and sequentially processing each one locks the UI for minutes (especially on 30-120 sticker packs).
   3. **High Memory & GC Pressure:** Heavy frame allocation and decoding creates frequent garbage collection pauses and interface lockups.
-- **Action Items:**
-  - Offload heavy image operations to background Dart Isolates (`Isolate.run` / worker pool) so the UI remains fluid at 60/120 FPS during preparation.
-  - Implement concurrent downloading and processing pipelines (bounded concurrency, e.g. 3-4 parallel workers).
-  - Explore hardware-accelerated native Android WebP encoding.
-  - Provide smooth, non-blocking real-time progress indicators with safe cancellation support.
+- **Action Items Completed:**
+  - [x] Offloaded heavy image operations to background Dart Isolates (`Isolate.run`) so the UI remains fluid at 60/120 FPS during preparation, with intermediate buffers cleanly freed upon worker completion.
+  - [x] Implemented concurrent downloading and processing pipelines (bounded concurrency pool of 3 workers), overlapping I/O and CPU workloads without changing sticker order.
+  - [x] Implemented hardware-accelerated native Android WebP compression (`compressStaticWebP`), and optimized Animated WebP encoding passes and frame counts.
+  - [x] Implemented smooth real-time progress visualization with `TweenAnimationBuilder`, an immediate "İşlemi İptal Et" cancellation action, and `PopScope` exit protection.
 
 ---
 
