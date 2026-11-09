@@ -31,6 +31,8 @@ class StickerProcessor {
       MethodChannel('com.example.stickerswap/video');
 
   /// Converts a video sticker (e.g. .webm) into a WhatsApp-compliant Animated WebP.
+  /// Dynamically computes frame delay and targets 20-22 frames across the full video duration
+  /// (up to WhatsApp's 3.0s limit) to prevent premature looping and fast-forward truncation.
   /// Heavy frame decoding and multi-frame WebP encoding run inside an isolate worker.
   Future<String> processVideoSticker(
     String videoPath,
@@ -39,7 +41,7 @@ class StickerProcessor {
     bool forceRefresh = false,
   }) async {
     final outputName =
-        '${p.basenameWithoutExtension(videoPath)}_wa.webp';
+        '${p.basenameWithoutExtension(videoPath)}_wa_v2.webp';
     final outputPath = p.join(outputDir, outputName);
 
     // Fast return if already processed, not forcing refresh, and within valid limits
@@ -51,23 +53,54 @@ class StickerProcessor {
       }
     }
 
+    // Clean up older truncated _wa.webp cache file if present
+    final oldPath = p.join(
+      outputDir,
+      '${p.basenameWithoutExtension(videoPath)}_wa.webp',
+    );
+    final oldFile = File(oldPath);
+    if (await oldFile.exists()) {
+      try {
+        await oldFile.delete();
+      } catch (_) {}
+    }
+
     try {
       // 1. Extract frames via Android native MediaCodec sequential extractor
-      final dynamic rawFrames = await _videoChannel.invokeMethod('extractFrames', {
+      // Request target 8 fps and max 22 frames to cover full 2.5s - 3.0s duration
+      final dynamic rawResult = await _videoChannel.invokeMethod('extractFrames', {
         'videoPath': videoPath,
-        'fps': 12,
-        'maxFrames': 15, // 15 frames at 12fps = 1.25s, optimal visual smoothness and size
+        'fps': 8,
+        'maxFrames': 22,
       });
 
-      if (rawFrames is List && rawFrames.isNotEmpty) {
-        final frames = rawFrames.cast<Uint8List>();
+      List<Uint8List> frames = [];
+      int frameDelayMs = 125;
+      int totalDurationMs = 3000;
+
+      if (rawResult is Map) {
+        final rawFrames = rawResult['frames'];
+        if (rawFrames is List && rawFrames.isNotEmpty) {
+          frames = rawFrames.cast<Uint8List>();
+        }
+        totalDurationMs = (rawResult['durationMs'] as num?)?.toInt() ?? 3000;
+        frameDelayMs = (rawResult['frameDelayMs'] as num?)?.toInt() ??
+            (frames.isNotEmpty ? (totalDurationMs ~/ frames.length) : 125);
+      } else if (rawResult is List && rawResult.isNotEmpty) {
+        frames = rawResult.cast<Uint8List>();
+        frameDelayMs = (3000 ~/ frames.length).clamp(8, 250);
+        totalDurationMs = frames.length * frameDelayMs;
+      }
+
+      if (frames.isNotEmpty) {
         // Offload heavy image decoding and WebP compression to background Isolate
         return await Isolate.run(() {
           return _createAnimatedWebpFromPngFramesSync(
             pngFrames: frames,
             outputPath: outputPath,
-            frameDelayMs: 83, // ~12 fps
+            frameDelayMs: frameDelayMs,
             maxKb: _maxAnimatedKb,
+            totalDurationMs: totalDurationMs,
           );
         });
       }
@@ -89,6 +122,8 @@ class StickerProcessor {
   }
 
   /// Converts a Lottie sticker (.tgs) into a compliant 512x512 Animated WebP.
+  /// Dynamically computes frame count and frame delay from composition duration (up to 3.0s)
+  /// so animations play at natural 1.0x speed without premature truncation.
   /// Yields to the UI event loop during frame extraction, then offloads
   /// Animated WebP encoding to a background isolate.
   Future<String> processLottieSticker(
@@ -98,7 +133,7 @@ class StickerProcessor {
     bool forceRefresh = false,
   }) async {
     final outputName =
-        '${p.basenameWithoutExtension(tgsPath)}_wa.webp';
+        '${p.basenameWithoutExtension(tgsPath)}_wa_v2.webp';
     final outputPath = p.join(outputDir, outputName);
 
     final outputFile = File(outputPath);
@@ -109,14 +144,35 @@ class StickerProcessor {
       }
     }
 
+    // Clean up older truncated _wa.webp cache file if present
+    final oldPath = p.join(
+      outputDir,
+      '${p.basenameWithoutExtension(tgsPath)}_wa.webp',
+    );
+    final oldFile = File(oldPath);
+    if (await oldFile.exists()) {
+      try {
+        await oldFile.delete();
+      } catch (_) {}
+    }
+
     try {
       final fileBytes = await File(tgsPath).readAsBytes();
       final unzipped = Uint8List.fromList(gzip.decode(fileBytes));
       final composition = await LottieComposition.fromBytes(unzipped);
       final drawable = LottieDrawable(composition);
 
+      // WhatsApp max animation duration is 3000 ms (3 seconds)
+      final compositionDurationMs = composition.duration.inMilliseconds;
+      final totalDurationMs =
+          (compositionDurationMs > 0 ? compositionDurationMs : 3000).clamp(500, 3000);
+
+      // Target ~8 fps for optimal smoothness and WebP size
+      // e.g. for 3000ms -> 22 frames; for 2000ms -> 16 frames; for 1000ms -> 8 frames
+      final frameCount = ((totalDurationMs / 1000.0) * 8).round().clamp(8, 22);
+      final frameDelayMs = (totalDurationMs / frameCount).round().clamp(8, 250);
+
       final frames = <Uint8List>[];
-      const frameCount = 14;
       final bounds = composition.bounds;
       final drawRect = Rect.fromLTWH(
         bounds.left.toDouble(),
@@ -134,7 +190,7 @@ class StickerProcessor {
       final dy = (size - scaledH) / 2.0;
 
       for (int i = 0; i < frameCount; i++) {
-        final progress = i / (frameCount - 1);
+        final progress = frameCount > 1 ? i / (frameCount - 1) : 0.0;
         drawable.setProgress(progress);
 
         final recorder = ui.PictureRecorder();
@@ -161,8 +217,9 @@ class StickerProcessor {
           return _createAnimatedWebpFromPngFramesSync(
             pngFrames: frames,
             outputPath: outputPath,
-            frameDelayMs: 83,
+            frameDelayMs: frameDelayMs,
             maxKb: _maxAnimatedKb,
+            totalDurationMs: totalDurationMs,
           );
         });
       }
@@ -337,13 +394,14 @@ class StickerProcessor {
   /// Strictly guarantees:
   /// - Exact 512x512 pixels
   /// - Animated WebP with at least 2 frames and infinite loop (`loopCount = 0`)
-  /// - File size strictly <= 480 KB (under WhatsApp's 500 KB limit)
+  /// - File size strictly <= 460 KB (under WhatsApp's 500 KB limit)
   /// - Total animation duration <= 3000 ms, each frame duration >= 8 ms
   static String _createAnimatedWebpFromPngFramesSync({
     required List<Uint8List> pngFrames,
     required String outputPath,
-    int frameDelayMs = 83,
+    int frameDelayMs = 125,
     int maxKb = _maxAnimatedKb,
+    int totalDurationMs = 3000,
   }) {
     if (pngFrames.isEmpty) {
       throw Exception('Kare listesi boş olamaz');
@@ -368,7 +426,7 @@ class StickerProcessor {
     final maxBytes = maxKb * 1024;
     Uint8List? bestBytes;
     var currentFrames = List<img.Image>.from(decodedList);
-    var currentDelay = frameDelayMs.clamp(8, 250);
+    var currentDelay = frameDelayMs.clamp(8, 500);
 
     // Ensure total animation duration <= 3000 ms as strictly required by WhatsApp
     if (currentFrames.length * currentDelay > 3000) {
@@ -388,7 +446,8 @@ class StickerProcessor {
       }
     }
 
-    // Strategy 2: If still > 480 KB, downsample frames (sample every 2nd frame)
+    // Strategy 2: If still > maxKb, downsample frames (sample every 2nd frame)
+    // while preserving total animation duration
     if (currentFrames.length > 6) {
       final downsampled = <img.Image>[];
       for (int i = 0; i < currentFrames.length; i += 2) {
@@ -398,7 +457,7 @@ class StickerProcessor {
         downsampled.add(currentFrames.last);
       }
       currentFrames = downsampled;
-      currentDelay = (currentDelay * 2).clamp(8, 250);
+      currentDelay = (currentDelay * 2).clamp(8, 500);
       if (currentFrames.length * currentDelay > 3000) {
         currentDelay = (3000 ~/ currentFrames.length).clamp(8, 250);
       }
@@ -416,7 +475,7 @@ class StickerProcessor {
       }
     }
 
-    // Strategy 3: Extreme fallback: sparse 4-frame animation
+    // Strategy 3: Extreme fallback: sparse 4-frame animation while preserving duration
     if (currentFrames.length > 4) {
       final step = (currentFrames.length / 4).ceil();
       final sparseFrames = <img.Image>[];
@@ -428,7 +487,11 @@ class StickerProcessor {
         sparseFrames.add(currentFrames.last);
       }
       currentFrames = sparseFrames;
-      currentDelay = (3000 ~/ currentFrames.length).clamp(80, 250);
+      final targetTotal = totalDurationMs.clamp(1000, 3000);
+      currentDelay = (targetTotal ~/ currentFrames.length).clamp(80, 500);
+      if (currentFrames.length * currentDelay > 3000) {
+        currentDelay = (3000 ~/ currentFrames.length).clamp(80, 500);
+      }
       canvas = _composeAnimatedCanvas(currentFrames, currentDelay);
 
       for (final q in const [40, 25, 15, 10]) {
@@ -446,7 +509,7 @@ class StickerProcessor {
     // Strategy 4: Strict 2-frame minimal animation if still oversized
     if (currentFrames.length > 2) {
       currentFrames = [currentFrames.first, currentFrames.last];
-      currentDelay = 500;
+      currentDelay = (totalDurationMs ~/ 2).clamp(250, 500);
       canvas = _composeAnimatedCanvas(currentFrames, currentDelay);
       for (final q in const [25, 15, 10, 5]) {
         final bytes = Uint8List.fromList(
@@ -485,6 +548,24 @@ class StickerProcessor {
 
     File(outputPath).writeAsBytesSync(bestBytes);
     return outputPath;
+  }
+
+  /// Helper exposed for unit testing animated WebP generation and duration verification.
+  @visibleForTesting
+  static String createAnimatedWebpFromPngFramesSyncForTest({
+    required List<Uint8List> pngFrames,
+    required String outputPath,
+    int frameDelayMs = 125,
+    int maxKb = _maxAnimatedKb,
+    int totalDurationMs = 3000,
+  }) {
+    return _createAnimatedWebpFromPngFramesSync(
+      pngFrames: pngFrames,
+      outputPath: outputPath,
+      frameDelayMs: frameDelayMs,
+      maxKb: maxKb,
+      totalDurationMs: totalDurationMs,
+    );
   }
 
   /// Synchronously processes a static or 2-frame animated sticker within an isolate.

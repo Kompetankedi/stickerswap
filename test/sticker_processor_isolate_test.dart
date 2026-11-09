@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:stickerswap/services/sticker_processor.dart';
@@ -93,6 +94,81 @@ void main() {
     expect(decoded!.width, 512);
     expect(decoded.height, 512);
     expect(decoded.numFrames, greaterThanOrEqualTo(2));
+  });
+
+  test('createAnimatedWebpFromPngFramesSyncForTest supports 22 frames with full ~3.0s duration <= 460KB', () async {
+    final frames = <Uint8List>[];
+    for (int i = 0; i < 22; i++) {
+      final frame = img.Image(width: 256, height: 256);
+      img.fill(frame, color: img.ColorUint8.rgba((i * 11) % 255, 120, 200, 255));
+      frames.add(img.encodePng(frame));
+    }
+
+    final outPath = '${tempDir.path}/test_22frames_wa_v2.webp';
+    final resultPath = StickerProcessor.createAnimatedWebpFromPngFramesSyncForTest(
+      pngFrames: frames,
+      outputPath: outPath,
+      frameDelayMs: 136, // 22 frames * 136ms = 2992ms (~3.0s)
+      totalDurationMs: 3000,
+    );
+
+    final file = File(resultPath);
+    expect(await file.exists(), isTrue);
+    final bytes = await file.readAsBytes();
+    expect(bytes.length, greaterThan(0));
+    expect(bytes.length, lessThanOrEqualTo(460 * 1024)); // WhatsApp 460 KB strict ceiling
+
+    final decoded = img.decodeWebP(bytes);
+    expect(decoded, isNotNull);
+    expect(decoded!.width, 512);
+    expect(decoded.height, 512);
+    expect(decoded.numFrames, greaterThanOrEqualTo(10));
+    expect(decoded.frameDuration, greaterThanOrEqualTo(8));
+    // Total animation duration should not exceed WhatsApp 3000 ms limit
+    expect(decoded.numFrames * decoded.frameDuration, lessThanOrEqualTo(3000));
+  });
+
+  test('createAnimatedWebpFromPngFramesSyncForTest preserves duration and enforces <= 460KB on heavy frames', () async {
+    // Generate complex frames to trigger multi-quality / downsampling fallback
+    final frames = <Uint8List>[];
+    for (int i = 0; i < 24; i++) {
+      final frame = img.Image(width: 512, height: 512);
+      // High frequency patterns
+      for (int y = 0; y < 512; y += 8) {
+        for (int x = 0; x < 512; x += 8) {
+          img.fillRect(
+            frame,
+            x1: x,
+            y1: y,
+            x2: x + 4,
+            y2: y + 4,
+            color: img.ColorUint8.rgba((x + i * 10) % 255, (y * 3) % 255, (x ^ y) % 255, 255),
+          );
+        }
+      }
+      frames.add(img.encodePng(frame));
+    }
+
+    final outPath = '${tempDir.path}/test_heavy_frames_wa_v2.webp';
+    final resultPath = StickerProcessor.createAnimatedWebpFromPngFramesSyncForTest(
+      pngFrames: frames,
+      outputPath: outPath,
+      frameDelayMs: 125, // 24 frames * 125ms = 3000ms
+      totalDurationMs: 3000,
+    );
+
+    final file = File(resultPath);
+    expect(await file.exists(), isTrue);
+    final bytes = await file.readAsBytes();
+    expect(bytes.length, lessThanOrEqualTo(460 * 1024));
+
+    final decoded = img.decodeWebP(bytes);
+    expect(decoded, isNotNull);
+    expect(decoded!.width, 512);
+    expect(decoded.height, 512);
+    expect(decoded.numFrames, greaterThanOrEqualTo(2));
+    expect(decoded.frameDuration, greaterThanOrEqualTo(8));
+    expect(decoded.numFrames * decoded.frameDuration, lessThanOrEqualTo(3000));
   });
 }
 

@@ -76,8 +76,8 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, VIDEO_CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "extractFrames") {
                 val videoPath = call.argument<String>("videoPath")
-                val targetFps = call.argument<Int>("fps") ?: 12
-                val maxFrames = call.argument<Int>("maxFrames") ?: 18
+                val targetFps = call.argument<Int>("fps") ?: 8
+                val maxFrames = call.argument<Int>("maxFrames") ?: 22
                 if (videoPath == null) {
                     result.error("INVALID_ARG", "videoPath is null", null)
                     return@setMethodCallHandler
@@ -87,6 +87,25 @@ class MainActivity : FlutterActivity() {
                     val frames = mutableListOf<ByteArray>()
                     var extractor: MediaExtractor? = null
                     var decoder: MediaCodec? = null
+                    var detectedDurationUs = 0L
+                    var actualDurationMs = 3000L
+                    var calculatedFrameDelayMs = 125
+
+                    // 1. Try MediaMetadataRetriever first for reliable duration on WebM/VP9
+                    var retrieverDuration: MediaMetadataRetriever? = null
+                    try {
+                        retrieverDuration = MediaMetadataRetriever()
+                        retrieverDuration.setDataSource(videoPath)
+                        val durStr = retrieverDuration.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        val durMs = durStr?.toLongOrNull() ?: 0L
+                        if (durMs > 0L) {
+                            detectedDurationUs = durMs * 1000L
+                        }
+                    } catch (e: Exception) {
+                        Log.w("MainActivity", "MediaMetadataRetriever duration extract error: ${e.message}")
+                    } finally {
+                        try { retrieverDuration?.release() } catch (_: Exception) {}
+                    }
 
                     try {
                         extractor = MediaExtractor()
@@ -108,13 +127,20 @@ class MainActivity : FlutterActivity() {
                             val width = mediaFormat.getInteger(MediaFormat.KEY_WIDTH)
                             val height = mediaFormat.getInteger(MediaFormat.KEY_HEIGHT)
                             val mime = mediaFormat.getString(MediaFormat.KEY_MIME) ?: "video/x-vnd.on2.vp9"
-                            val durationUs = if (mediaFormat.containsKey(MediaFormat.KEY_DURATION)) {
-                                mediaFormat.getLong(MediaFormat.KEY_DURATION)
-                            } else {
-                                2000000L
+
+                            // 2. If MediaMetadataRetriever didn't get duration, try MediaFormat
+                            if (detectedDurationUs <= 0L && mediaFormat.containsKey(MediaFormat.KEY_DURATION)) {
+                                try {
+                                    detectedDurationUs = mediaFormat.getLong(MediaFormat.KEY_DURATION)
+                                } catch (_: Exception) {}
                             }
 
-                            val safeDurationMs = (durationUs / 1000L).coerceAtMost(3000L)
+                            val durationWasEstimated = detectedDurationUs <= 0L
+                            // Telegram stickers are at most 3 seconds (3,000,000 us)
+                            val durationUs = if (detectedDurationUs > 0L) detectedDurationUs else 3000000L
+
+                            // WhatsApp duration ceiling is strictly 3000 ms (3 seconds)
+                            val safeDurationMs = (durationUs / 1000L).coerceIn(500L, 3000L)
                             val targetFrameCount = ((safeDurationMs / 1000.0) * targetFps).toInt().coerceIn(6, maxFrames)
                             val targetIntervalUs = if (targetFrameCount > 1) durationUs / targetFrameCount else durationUs
 
@@ -129,6 +155,7 @@ class MainActivity : FlutterActivity() {
                             var sliceHeight = height
                             var colorFormat = 19
                             var nextTargetTimeUs = 0L
+                            var maxPtsUs = 0L
 
                             while (!isEOS && frames.size < targetFrameCount) {
                                 val inIdx = decoder.dequeueInputBuffer(timeoutUs)
@@ -150,54 +177,61 @@ class MainActivity : FlutterActivity() {
                                     if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                                         isEOS = true
                                     }
-                                    if (bufferInfo.size > 0 && bufferInfo.presentationTimeUs >= nextTargetTimeUs) {
-                                        val outBuf = decoder.getOutputBuffer(outIdx)
-                                        if (outBuf != null) {
-                                            val rawYuv = ByteArray(bufferInfo.size)
-                                            outBuf.position(bufferInfo.offset)
-                                            outBuf.get(rawYuv, 0, bufferInfo.size)
+                                    if (bufferInfo.size > 0 && bufferInfo.presentationTimeUs >= 0) {
+                                        if (bufferInfo.presentationTimeUs > maxPtsUs) {
+                                            maxPtsUs = bufferInfo.presentationTimeUs
+                                        }
+                                        if (bufferInfo.presentationTimeUs >= nextTargetTimeUs) {
+                                            val outBuf = decoder.getOutputBuffer(outIdx)
+                                            if (outBuf != null) {
+                                                val rawYuv = ByteArray(bufferInfo.size)
+                                                outBuf.position(bufferInfo.offset)
+                                                outBuf.get(rawYuv, 0, bufferInfo.size)
 
-                                            val ySize = stride * sliceHeight
-                                            val uvSize = (stride / 2) * (sliceHeight / 2)
-                                            val nv21 = ByteArray(stride * sliceHeight * 3 / 2)
-                                            val actualYSize = minOf(ySize, rawYuv.size)
-                                            System.arraycopy(rawYuv, 0, nv21, 0, actualYSize)
+                                                val ySize = stride * sliceHeight
+                                                val uvSize = (stride / 2) * (sliceHeight / 2)
+                                                val nv21 = ByteArray(stride * sliceHeight * 3 / 2)
+                                                val actualYSize = minOf(ySize, rawYuv.size)
+                                                System.arraycopy(rawYuv, 0, nv21, 0, actualYSize)
 
-                                            if (colorFormat == 21) {
-                                                // NV12: swap U and V to make NV21
-                                                val uvStart = ySize
-                                                for (j in 0 until uvSize) {
-                                                    val idx = uvStart + j * 2
-                                                    if (idx + 1 < rawYuv.size && ySize + j * 2 + 1 < nv21.size) {
-                                                        nv21[ySize + j * 2] = rawYuv[idx + 1]
-                                                        nv21[ySize + j * 2 + 1] = rawYuv[idx]
+                                                if (colorFormat == 21) {
+                                                    // NV12: swap U and V to make NV21
+                                                    val uvStart = ySize
+                                                    for (j in 0 until uvSize) {
+                                                        val idx = uvStart + j * 2
+                                                        if (idx + 1 < rawYuv.size && ySize + j * 2 + 1 < nv21.size) {
+                                                            nv21[ySize + j * 2] = rawYuv[idx + 1]
+                                                            nv21[ySize + j * 2 + 1] = rawYuv[idx]
+                                                        }
+                                                    }
+                                                } else {
+                                                    // I420 (Planar): interleave V and U
+                                                    val uOffset = ySize
+                                                    val vOffset = ySize + uvSize
+                                                    var nv21Pos = ySize
+                                                    for (j in 0 until uvSize) {
+                                                        if (vOffset + j < rawYuv.size && uOffset + j < rawYuv.size && nv21Pos + 1 < nv21.size) {
+                                                            nv21[nv21Pos++] = rawYuv[vOffset + j]
+                                                            nv21[nv21Pos++] = rawYuv[uOffset + j]
+                                                        }
                                                     }
                                                 }
-                                            } else {
-                                                // I420 (Planar): interleave V and U
-                                                val uOffset = ySize
-                                                val vOffset = ySize + uvSize
-                                                var nv21Pos = ySize
-                                                for (j in 0 until uvSize) {
-                                                    if (vOffset + j < rawYuv.size && uOffset + j < rawYuv.size && nv21Pos + 1 < nv21.size) {
-                                                        nv21[nv21Pos++] = rawYuv[vOffset + j]
-                                                        nv21[nv21Pos++] = rawYuv[uOffset + j]
-                                                    }
-                                                }
-                                            }
 
-                                            try {
-                                                val yuvImage = try {
-                                                    YuvImage(nv21, ImageFormat.NV21, width, height, null)
-                                                } catch (_: Exception) {
-                                                    YuvImage(nv21, ImageFormat.NV21, width, height, intArrayOf(stride, stride))
+                                                try {
+                                                    val yuvImage = try {
+                                                        YuvImage(nv21, ImageFormat.NV21, width, height, null)
+                                                    } catch (_: Exception) {
+                                                        YuvImage(nv21, ImageFormat.NV21, width, height, intArrayOf(stride, stride))
+                                                    }
+                                                    val stream = ByteArrayOutputStream()
+                                                    yuvImage.compressToJpeg(Rect(0, 0, width, height), 85, stream)
+                                                    frames.add(stream.toByteArray())
+                                                    while (nextTargetTimeUs <= bufferInfo.presentationTimeUs) {
+                                                        nextTargetTimeUs += targetIntervalUs
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Log.w("MainActivity", "Frame extraction compressToJpeg failed: ${e.message}")
                                                 }
-                                                val stream = ByteArrayOutputStream()
-                                                yuvImage.compressToJpeg(Rect(0, 0, width, height), 85, stream)
-                                                frames.add(stream.toByteArray())
-                                                nextTargetTimeUs += targetIntervalUs
-                                            } catch (e: Exception) {
-                                                Log.w("MainActivity", "Frame extraction compressToJpeg failed: ${e.message}")
                                             }
                                         }
                                     }
@@ -208,6 +242,17 @@ class MainActivity : FlutterActivity() {
                                     if (outFormat.containsKey("slice-height")) sliceHeight = outFormat.getInteger("slice-height")
                                     if (outFormat.containsKey("color-format")) colorFormat = outFormat.getInteger("color-format")
                                 }
+                            }
+
+                            if (frames.isNotEmpty()) {
+                                if (durationWasEstimated && maxPtsUs > 500000L) {
+                                    actualDurationMs = (maxPtsUs / 1000L).coerceIn(500L, 3000L)
+                                } else {
+                                    actualDurationMs = safeDurationMs
+                                }
+                                calculatedFrameDelayMs = (actualDurationMs.toDouble() / frames.size)
+                                    .toInt()
+                                    .coerceIn(8, 250)
                             }
                         }
                     } catch (e: Exception) {
@@ -220,18 +265,18 @@ class MainActivity : FlutterActivity() {
 
                     // Fallback to MediaMetadataRetriever if MediaCodec produced nothing
                     if (frames.isEmpty()) {
-                        val retriever = MediaMetadataRetriever()
+                        val retrieverFallback = MediaMetadataRetriever()
                         try {
-                            retriever.setDataSource(videoPath)
+                            retrieverFallback.setDataSource(videoPath)
                             val b1 = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                                retriever.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST, 512, 512)
+                                retrieverFallback.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST, 512, 512)
                             } else {
-                                retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST)
+                                retrieverFallback.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST)
                             }
                             val b2 = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                                retriever.getScaledFrameAtTime(500000L, MediaMetadataRetriever.OPTION_CLOSEST, 512, 512)
+                                retrieverFallback.getScaledFrameAtTime(500000L, MediaMetadataRetriever.OPTION_CLOSEST, 512, 512)
                             } else {
-                                retriever.getFrameAtTime(500000L, MediaMetadataRetriever.OPTION_CLOSEST)
+                                retrieverFallback.getFrameAtTime(500000L, MediaMetadataRetriever.OPTION_CLOSEST)
                             }
                             if (b1 != null) {
                                 val s1 = ByteArrayOutputStream()
@@ -247,15 +292,25 @@ class MainActivity : FlutterActivity() {
                             } else if (frames.isNotEmpty()) {
                                 frames.add(frames.first()) // Duplicate frame to guarantee >= 2 frames for animated stickers
                             }
+                            if (frames.isNotEmpty()) {
+                                actualDurationMs = 1000L
+                                calculatedFrameDelayMs = 500
+                            }
                         } catch (e: Exception) {
                             Log.e("MainActivity", "Fallback retriever failed", e)
                         } finally {
-                            try { retriever.release() } catch (_: Exception) {}
+                            try { retrieverFallback.release() } catch (_: Exception) {}
                         }
                     }
 
+                    val response = mapOf(
+                        "frames" to frames,
+                        "durationMs" to actualDurationMs.toInt(),
+                        "frameDelayMs" to calculatedFrameDelayMs
+                    )
+
                     runOnUiThread {
-                        result.success(frames)
+                        result.success(response)
                     }
                 }.start()
             } else if (call.method == "compressStaticWebP") {
