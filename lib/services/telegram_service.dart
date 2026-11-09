@@ -117,25 +117,38 @@ class TelegramService {
     return TelegramStickerSet.fromJson(data['result']);
   }
 
-  /// Retrieves the download URL for a given file_id.
+  /// Retrieves the download URL for a given file_id with retry.
   Future<String> getFileUrl(String fileId) async {
     if (!hasToken) {
       throw Exception('Bot Token tanımlanmamış.');
     }
 
-    final response = await http
-        .get(Uri.parse('$_apiBase/getFile?file_id=$fileId'))
-        .timeout(const Duration(seconds: 10));
+    int attempts = 0;
+    while (true) {
+      attempts++;
+      try {
+        final response = await http
+            .get(Uri.parse('$_apiBase/getFile?file_id=$fileId'))
+            .timeout(const Duration(seconds: 15));
 
-    final data = jsonDecode(response.body);
-    if (data['ok'] != true) {
-      throw Exception('Dosya yolu alınamadı: ${data['description'] ?? 'Hata'}');
+        final data = jsonDecode(response.body);
+        if (data['ok'] != true) {
+          throw Exception('Dosya yolu alınamadı: ${data['description'] ?? 'Hata'}');
+        }
+        final filePath = data['result']['file_path'];
+        return 'https://api.telegram.org/file/bot$_botToken/$filePath';
+      } catch (e) {
+        if (attempts >= 3) {
+          rethrow;
+        }
+        await Future.delayed(Duration(milliseconds: 500 * attempts));
+      }
     }
-    final filePath = data['result']['file_path'];
-    return 'https://api.telegram.org/file/bot$_botToken/$filePath';
   }
 
   /// Downloads a sticker file to local storage and returns its path.
+  /// Implements automated 3-pass retry with backoff and atomic temporary writes
+  /// to ensure socket drops (ClientRead failed) do not abort bulk preparation.
   Future<String> downloadSticker(
     TelegramSticker sticker,
     String packName,
@@ -159,30 +172,52 @@ class TelegramService {
       return filePath;
     }
 
-    final url = await getFileUrl(sticker.fileId);
-    final response = await http
-        .get(Uri.parse(url))
-        .timeout(const Duration(seconds: 30));
+    int attempts = 0;
+    while (true) {
+      attempts++;
+      try {
+        final url = await getFileUrl(sticker.fileId);
+        final response = await http
+            .get(Uri.parse(url))
+            .timeout(const Duration(seconds: 30));
 
-    if (response.statusCode != 200) {
-      throw Exception('Sticker indirilemedi (HTTP ${response.statusCode})');
+        if (response.statusCode != 200) {
+          throw Exception('Sticker indirilemedi (HTTP ${response.statusCode})');
+        }
+
+        final tmpPath = '$filePath.tmp';
+        final tmpFile = File(tmpPath);
+        await tmpFile.writeAsBytes(response.bodyBytes);
+        await tmpFile.rename(filePath);
+        return filePath;
+      } catch (e) {
+        if (attempts >= 3) {
+          rethrow;
+        }
+        await Future.delayed(Duration(milliseconds: 1000 * attempts));
+      }
     }
-
-    await file.writeAsBytes(response.bodyBytes);
-    return filePath;
   }
 
-  /// Downloads a thumbnail for a sticker (used for previews).
+  /// Downloads a thumbnail for a sticker (used for previews) with retry.
   Future<Uint8List?> downloadThumbnail(String fileId) async {
-    try {
-      final url = await getFileUrl(fileId);
-      final response = await http
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 10));
-      if (response.statusCode == 200) {
-        return response.bodyBytes;
+    int attempts = 0;
+    while (attempts < 3) {
+      attempts++;
+      try {
+        final url = await getFileUrl(fileId);
+        final response = await http
+            .get(Uri.parse(url))
+            .timeout(const Duration(seconds: 15));
+        if (response.statusCode == 200) {
+          return response.bodyBytes;
+        }
+      } catch (_) {
+        if (attempts < 3) {
+          await Future.delayed(Duration(milliseconds: 500 * attempts));
+        }
       }
-    } catch (_) {}
+    }
     return null;
   }
 }

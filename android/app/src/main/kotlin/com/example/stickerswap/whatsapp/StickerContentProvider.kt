@@ -120,7 +120,7 @@ class StickerContentProvider : ContentProvider() {
             Log.i(TAG, "openAssetFile SUCCESS: uri=$uri, path=${file.absolutePath}, size=${file.length()}")
             return try {
                 val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-                AssetFileDescriptor(pfd, 0, file.length())
+                AssetFileDescriptor(pfd, 0L, AssetFileDescriptor.UNKNOWN_LENGTH)
             } catch (e: Exception) {
                 Log.e(TAG, "Error opening asset file: ${file.absolutePath}, falling back to placeholder", e)
                 getOrCreateFallbackAsset(context, fileName)
@@ -155,15 +155,18 @@ class StickerContentProvider : ContentProvider() {
             if (pack != null) {
                 // Is it the tray icon?
                 val trayF = File(pack.trayImage)
-                if (fileName.contains("tray", ignoreCase = true) ||
-                    decodedName.contains("tray", ignoreCase = true) ||
-                    trayF.name.equals(fileName, ignoreCase = true) ||
-                    trayF.name.equals(decodedName, ignoreCase = true) ||
+                val isTray = fileName.equals(trayF.name, ignoreCase = true) ||
+                    decodedName.equals(trayF.name, ignoreCase = true) ||
+                    fileName.equals("tray_icon.png", ignoreCase = true) ||
+                    decodedName.equals("tray_icon.png", ignoreCase = true) ||
                     pack.trayImage.endsWith(fileName) ||
                     pack.trayImage.endsWith(decodedName) ||
-                    StickerPack.encodePath(pack.trayImage) == fileName
-                ) {
-                    if (trayF.exists()) return trayF
+                    StickerPack.encodePath(pack.trayImage) == fileName ||
+                    ((fileName.startsWith("tray_") || decodedName.startsWith("tray_")) &&
+                        (fileName.endsWith(".png") || fileName.endsWith(".webp")))
+
+                if (isTray && trayF.exists()) {
+                    return trayF
                 }
 
                 // Is it one of the stickers?
@@ -180,12 +183,12 @@ class StickerContentProvider : ContentProvider() {
                     if (sFile.exists()) return sFile
                 }
 
-                // Try numeric index matching (e.g. "0.webp", "0", "00_...", "sticker_1.webp")
-                val numericMatch = Regex("([0-9]+)").find(fileName)
-                if (numericMatch != null) {
-                    val rawNum = numericMatch.value.toIntOrNull()
+                // Strict numeric index matching ONLY if filename is strictly formatted like "sticker_1.webp" or "0.webp"
+                val strictNumericMatch = Regex("^(?:sticker_)?([0-9]+)\\.webp$", RegexOption.IGNORE_CASE).find(fileName)
+                if (strictNumericMatch != null) {
+                    val rawNum = strictNumericMatch.groupValues[1].toIntOrNull()
                     if (rawNum != null) {
-                        val idx0 = if (fileName.startsWith("sticker_")) rawNum - 1 else rawNum
+                        val idx0 = if (fileName.startsWith("sticker_", ignoreCase = true)) rawNum - 1 else rawNum
                         if (idx0 in pack.stickers.indices) {
                             val candidate = File(pack.stickers[idx0].path)
                             if (candidate.exists()) return candidate
@@ -296,7 +299,7 @@ class StickerContentProvider : ContentProvider() {
             }
 
             val pfd = ParcelFileDescriptor.open(targetFile, ParcelFileDescriptor.MODE_READ_ONLY)
-            AssetFileDescriptor(pfd, 0, targetFile.length())
+            AssetFileDescriptor(pfd, 0L, AssetFileDescriptor.UNKNOWN_LENGTH)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create fallback asset for $fileName", e)
             null
@@ -342,12 +345,13 @@ class StickerContentProvider : ContentProvider() {
         val context = context ?: return null
         val authority = getAuthority(context.packageName)
 
-        return when (uriMatcher.match(uri)) {
-            METADATA_ALL -> "vnd.android.cursor.dir/vnd.$authority.metadata"
-            METADATA_ONE -> "vnd.android.cursor.item/vnd.$authority.metadata"
-            STICKERS_OF_PACK -> "vnd.android.cursor.dir/vnd.$authority.stickers"
-            STICKER_ASSET -> {
-                val path = uri.path ?: ""
+        val matchCode = uriMatcher.match(uri)
+        val path = uri.path ?: ""
+        return when {
+            matchCode == METADATA_ALL -> "vnd.android.cursor.dir/vnd.$authority.metadata"
+            matchCode == METADATA_ONE -> "vnd.android.cursor.item/vnd.$authority.metadata"
+            matchCode == STICKERS_OF_PACK -> "vnd.android.cursor.dir/vnd.$authority.stickers"
+            matchCode == STICKER_ASSET || path.contains("stickers_asset") -> {
                 if (path.endsWith(".png", ignoreCase = true)) {
                     "image/png"
                 } else {

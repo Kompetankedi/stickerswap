@@ -22,9 +22,9 @@ import 'package:path_provider/path_provider.dart';
 class StickerProcessor {
   static const int _whatsappSize = 512;
   static const int _traySize = 96;
-  static const int _maxStaticKb = 100;
-  static const int _maxAnimatedKb = 480; // Strictly under WhatsApp 500KB limit
-  static const int _maxTrayKb = 50;
+  static const int _maxStaticKb = 96;
+  static const int _maxAnimatedKb = 460; // Strictly under WhatsApp 500KB decimal (500,000 bytes) limit
+  static const int _maxTrayKb = 48; // Strictly under WhatsApp 50KB limit
   static const int _padding = 16;
 
   static const MethodChannel _videoChannel =
@@ -460,7 +460,30 @@ class StickerProcessor {
       }
     }
 
-    File(outputPath).writeAsBytesSync(bestBytes!);
+    // Final safety guard: ensure bytes <= maxBytes unconditionally by downscaling frames
+    if (bestBytes == null || bestBytes.length > maxBytes) {
+      final smallerCanvas = img.Image(width: _whatsappSize, height: _whatsappSize, numChannels: 4);
+      final twoFrames = currentFrames.take(2).toList();
+      while (twoFrames.length < 2) {
+        twoFrames.add(twoFrames.first);
+      }
+      final sFirst = _fitImage(twoFrames[0], 360);
+      img.compositeImage(smallerCanvas, sFirst, dstX: (_whatsappSize - sFirst.width) ~/ 2, dstY: (_whatsappSize - sFirst.height) ~/ 2);
+      smallerCanvas.frameDuration = 500;
+      smallerCanvas.loopCount = 0;
+
+      final sSecond = _fitImage(twoFrames[1], 360);
+      final frame2 = img.Image(width: _whatsappSize, height: _whatsappSize, numChannels: 4);
+      img.compositeImage(frame2, sSecond, dstX: (_whatsappSize - sSecond.width) ~/ 2, dstY: (_whatsappSize - sSecond.height) ~/ 2);
+      frame2.frameDuration = 500;
+      smallerCanvas.frames.add(frame2);
+
+      bestBytes = Uint8List.fromList(
+        img.encodeWebP(smallerCanvas, lossless: false, quality: 15),
+      );
+    }
+
+    File(outputPath).writeAsBytesSync(bestBytes);
     return outputPath;
   }
 

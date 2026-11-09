@@ -440,7 +440,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                 sticker: sticker,
                 outputDir: outputDir,
                 isAnimatedPack: isAnimatedPack,
-                forceRefresh: true,
+                forceRefresh: false,
               );
 
               if (_isCancelled || !mounted) return;
@@ -491,7 +491,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
           stickerData.first['path'] as String,
           outputDir,
           fileName: trayFileName,
-          forceRefresh: true,
+          forceRefresh: false,
         );
 
         if (_isCancelled || !mounted) return;

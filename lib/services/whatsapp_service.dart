@@ -140,21 +140,21 @@ class WhatsAppService {
       );
     }
 
-    // 2. Tray icon validation (must exist and be <= 50 KB)
+    // 2. Tray icon validation (must exist and be <= 48 KB, strictly under WhatsApp 50 KB ceiling)
     final trayFile = File(trayPath);
     if (!await trayFile.exists()) {
       throw Exception('Tepsi simgesi (tray icon) bulunamadı: $trayPath');
     }
     final traySize = await trayFile.length();
-    if (traySize > 50 * 1024) {
+    if (traySize > 48 * 1024) {
       throw Exception(
         'Tepsi simgesi boyutu WhatsApp 50 KB sınırını aşıyor: '
         '${(traySize / 1024).toStringAsFixed(1)} KB.',
       );
     }
 
-    // 3. Sticker files and emojis pre-validation (Strict WhatsApp compliance)
-    final maxAllowedBytes = animatedStickerPack ? 500 * 1024 : 100 * 1024;
+    // 3. Sticker files and emojis pre-validation (Strict WhatsApp compliance: <= 470 KB animated, <= 96 KB static)
+    final maxAllowedBytes = animatedStickerPack ? 470 * 1024 : 96 * 1024;
     final sanitizedStickers = <Map<String, dynamic>>[];
 
     for (int i = 0; i < stickerData.length; i++) {
@@ -172,7 +172,7 @@ class WhatsAppService {
         throw Exception('${i + 1}. çıkartma dosyası boş (0 bayt): $path');
       }
       if (size > maxAllowedBytes) {
-        final limitKb = animatedStickerPack ? 500 : 100;
+        final limitKb = animatedStickerPack ? 470 : 96;
         final actualKb = (size / 1024).toStringAsFixed(1);
         throw Exception(
           '${i + 1}. çıkartma boyutu ($actualKb KB) '
