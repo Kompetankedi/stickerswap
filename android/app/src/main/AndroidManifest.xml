@@ -48,6 +48,7 @@
             android:authorities="${applicationId}.stickercontentprovider"
             android:enabled="true"
             android:exported="true"
+            android:grantUriPermissions="true"
             android:readPermission="com.whatsapp.sticker.READ" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

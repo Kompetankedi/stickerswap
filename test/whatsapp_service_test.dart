@@ -30,5 +30,35 @@ void main() {
       expect(chunks.length, 1);
       expect(chunks[0].length, 12);
     });
+
+    group('sanitizeEmojis Tests', () {
+      test('keeps single valid emoji', () {
+        expect(WhatsAppService.sanitizeEmojis('🐱'), ['🐱']);
+        expect(WhatsAppService.sanitizeEmojis('🔥'), ['🔥']);
+        expect(WhatsAppService.sanitizeEmojis('⭐'), ['⭐']);
+      });
+
+      test('keeps up to 3 valid emojis and trims excess', () {
+        expect(WhatsAppService.sanitizeEmojis('🐱🐶🐭'), ['🐱', '🐶', '🐭']);
+        expect(WhatsAppService.sanitizeEmojis('😀😁😂🤣😃'), ['😀', '😁', '😂']);
+      });
+
+      test('handles empty or whitespace strings with safe fallback ⭐', () {
+        expect(WhatsAppService.sanitizeEmojis(''), ['⭐']);
+        expect(WhatsAppService.sanitizeEmojis('   '), ['⭐']);
+        expect(WhatsAppService.sanitizeEmojis(null), ['⭐']);
+      });
+
+      test('extracts emojis from mixed text', () {
+        expect(WhatsAppService.sanitizeEmojis('cat 🐱 dog 🐶 hello'), ['🐱', '🐶']);
+        expect(WhatsAppService.sanitizeEmojis('no emojis here'), ['⭐']);
+      });
+
+      test('correctly handles multi-codepoint emojis', () {
+        expect(WhatsAppService.sanitizeEmojis('🤷‍♂️'), ['🤷‍♂️']);
+        expect(WhatsAppService.sanitizeEmojis('👍🏻'), ['👍🏻']);
+        expect(WhatsAppService.sanitizeEmojis('❤️'), ['❤️']);
+      });
+    });
   });
 }

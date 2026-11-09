@@ -404,16 +404,19 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
         final isAnimatedPack =
             widget.stickerSet.isAnimated ||
             widget.stickerSet.isVideo ||
-            selected.any((s) => s.isAnimated || s.isVideo);
+        chunk.any((s) => s.isAnimated || s.isVideo);
 
-        final stickerDataSlots =
-            List<Map<String, dynamic>?>.filled(chunk.length, null);
+        final stickerDataSlots = List<Map<String, dynamic>?>.filled(
+          chunk.length,
+          null,
+        );
 
         // Bounded concurrency worker pool (3 parallel workers)
         // Combines network I/O with background isolate image processing
         const int maxConcurrency = 3;
-        final int workerCount =
-            chunk.length < maxConcurrency ? chunk.length : maxConcurrency;
+        final int workerCount = chunk.length < maxConcurrency
+            ? chunk.length
+            : maxConcurrency;
         int nextWorkerIndex = 0;
 
         Future<void> runStickerWorker() async {
@@ -437,20 +440,23 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                 sticker: sticker,
                 outputDir: outputDir,
                 isAnimatedPack: isAnimatedPack,
+                forceRefresh: true,
               );
 
               if (_isCancelled || !mounted) return;
 
               stickerDataSlots[itemIndex] = {
                 'path': processedPath,
-                'emojis': [sticker.emoji],
+                'emojis': WhatsAppService.sanitizeEmojis(sticker.emoji),
               };
 
               completedTotalCount++;
               if (mounted && !_isCancelled) {
                 setState(() {
-                  _progress =
-                      (completedTotalCount / totalCount).clamp(0.0, 1.0);
+                  _progress = (completedTotalCount / totalCount).clamp(
+                    0.0,
+                    1.0,
+                  );
                   _statusText =
                       'Hazırlanıyor: $completedTotalCount / $totalCount (%${(_progress * 100).toInt()})';
                 });
@@ -467,8 +473,9 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
 
         if (_isCancelled || !mounted) return;
 
-        final stickerData =
-            stickerDataSlots.whereType<Map<String, dynamic>>().toList();
+        final stickerData = stickerDataSlots
+            .whereType<Map<String, dynamic>>()
+            .toList();
         if (stickerData.length < 3) {
           throw Exception('Bu parçada en az 3 geçerli çıkartma hazırlanamadı.');
         }
@@ -484,6 +491,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
           stickerData.first['path'] as String,
           outputDir,
           fileName: trayFileName,
+          forceRefresh: true,
         );
 
         if (_isCancelled || !mounted) return;
@@ -586,34 +594,51 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
     required TelegramSticker sticker,
     required String outputDir,
     required bool isAnimatedPack,
+    bool forceRefresh = false,
   }) async {
     if (sticker.isVideo) {
       final videoPath = await _telegramService.downloadSticker(
         sticker,
         widget.stickerSet.name,
       );
-      final thumbId = sticker.thumbFileId ?? sticker.fileId;
-      var thumbBytes = _thumbnails[thumbId];
-      thumbBytes ??= await _telegramService.downloadThumbnail(thumbId);
+      final thumbId =
+          (sticker.thumbFileId != null && sticker.thumbFileId!.isNotEmpty)
+          ? sticker.thumbFileId!
+          : null;
+      Uint8List? thumbBytes;
+      if (thumbId != null) {
+        thumbBytes =
+            _thumbnails[thumbId] ??
+            await _telegramService.downloadThumbnail(thumbId);
+      }
 
       return await _stickerProcessor.processVideoSticker(
         videoPath,
         outputDir,
         fallbackThumbnailBytes: thumbBytes,
+        forceRefresh: forceRefresh,
       );
     } else if (sticker.isAnimated) {
       final animatedPath = await _telegramService.downloadSticker(
         sticker,
         widget.stickerSet.name,
       );
-      final thumbId = sticker.thumbFileId ?? sticker.fileId;
-      var thumbBytes = _thumbnails[thumbId];
-      thumbBytes ??= await _telegramService.downloadThumbnail(thumbId);
+      final thumbId =
+          (sticker.thumbFileId != null && sticker.thumbFileId!.isNotEmpty)
+          ? sticker.thumbFileId!
+          : null;
+      Uint8List? thumbBytes;
+      if (thumbId != null) {
+        thumbBytes =
+            _thumbnails[thumbId] ??
+            await _telegramService.downloadThumbnail(thumbId);
+      }
 
       return await _stickerProcessor.processLottieSticker(
         animatedPath,
         outputDir,
         fallbackThumbnailBytes: thumbBytes,
+        forceRefresh: forceRefresh,
       );
     } else {
       final downloadedPath = await _telegramService.downloadSticker(
@@ -624,6 +649,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
         downloadedPath,
         outputDir,
         asAnimated: isAnimatedPack,
+        forceRefresh: forceRefresh,
       );
     }
   }
@@ -919,262 +945,277 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
               }
             },
           ),
-        title: Column(
-          children: [
-            Text(
-              set.title,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.getText(context),
+          title: Column(
+            children: [
+              Text(
+                set.title,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.getText(context),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$totalCount çıkartma',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: set.isStatic
+                          ? AppTheme.accentPrimary.withAlpha(25)
+                          : AppTheme.accentSecondary.withAlpha(25),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      set.typeLabel,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: set.isStatic
+                            ? AppTheme.accentPrimary
+                            : AppTheme.accentSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            IconButton(
+              icon: Icon(
+                _isSearchOpen ? Icons.close_rounded : Icons.search_rounded,
+                color: AppTheme.textPrimary,
+                size: 20,
+              ),
+              onPressed: () {
+                setState(() {
+                  _isSearchOpen = !_isSearchOpen;
+                  if (!_isSearchOpen) {
+                    _emojiSearch = '';
+                    _searchController.clear();
+                  }
+                });
+              },
             ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '$totalCount çıkartma',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textMuted,
+            PopupMenuButton<String>(
+              icon: const Icon(
+                Icons.more_vert_rounded,
+                color: AppTheme.textPrimary,
+              ),
+              color: AppTheme.surfaceDark,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              onSelected: (val) {
+                if (val == 'all') _toggleSelectAll();
+                if (val == 'invert') _invertSelection();
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'all',
+                  child: Text(
+                    _selectAll ? 'Seçimi Kaldır' : 'Tümünü Seç',
+                    style: const TextStyle(color: AppTheme.textPrimary),
                   ),
                 ),
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: set.isStatic
-                        ? AppTheme.accentPrimary.withAlpha(25)
-                        : AppTheme.accentSecondary.withAlpha(25),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
+                const PopupMenuItem(
+                  value: 'invert',
                   child: Text(
-                    set.typeLabel,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: set.isStatic
-                          ? AppTheme.accentPrimary
-                          : AppTheme.accentSecondary,
-                    ),
+                    'Seçimi Tersine Çevir',
+                    style: TextStyle(color: AppTheme.textPrimary),
                   ),
                 ),
               ],
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: Icon(
-              _isSearchOpen ? Icons.close_rounded : Icons.search_rounded,
-              color: AppTheme.textPrimary,
-              size: 20,
-            ),
-            onPressed: () {
-              setState(() {
-                _isSearchOpen = !_isSearchOpen;
-                if (!_isSearchOpen) {
-                  _emojiSearch = '';
-                  _searchController.clear();
-                }
-              });
-            },
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(
-              Icons.more_vert_rounded,
-              color: AppTheme.textPrimary,
-            ),
-            color: AppTheme.surfaceDark,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            onSelected: (val) {
-              if (val == 'all') _toggleSelectAll();
-              if (val == 'invert') _invertSelection();
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'all',
-                child: Text(
-                  _selectAll ? 'Seçimi Kaldır' : 'Tümünü Seç',
-                  style: const TextStyle(color: AppTheme.textPrimary),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'invert',
-                child: Text(
-                  'Seçimi Tersine Çevir',
-                  style: TextStyle(color: AppTheme.textPrimary),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // ─── Search Bar ──────────────────────────────────
-          if (_isSearchOpen)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isDark
-                        ? const Color(0xFF334155)
-                        : const Color(0xFFE2E8F0),
-                  ),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  autofocus: true,
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 13,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Emojiye göre filtrele (örn: 😂, 🐱, ❤️)...',
-                    hintStyle: TextStyle(
-                      color: AppTheme.textMuted.withAlpha(120),
-                      fontSize: 12,
-                    ),
-                    prefixIcon: const Icon(
-                      Icons.emoji_emotions_outlined,
-                      color: AppTheme.accentPrimary,
-                      size: 18,
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
+        body: Column(
+          children: [
+            // ─── Search Bar ──────────────────────────────────
+            if (_isSearchOpen)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isDark
+                          ? const Color(0xFF334155)
+                          : const Color(0xFFE2E8F0),
                     ),
                   ),
-                  onChanged: (val) => setState(() => _emojiSearch = val.trim()),
-                ),
-              ),
-            ),
-
-          // ─── Filter & Selection Bar ───────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                _FilterChip(
-                  label: 'Tümü ($totalCount)',
-                  isSelected: _filterIndex == 0,
-                  onTap: () => setState(() => _filterIndex = 0),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'Seçili ($selectedCount)',
-                  isSelected: _filterIndex == 1,
-                  onTap: () => setState(() => _filterIndex = 1),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: 'Kalan (${totalCount - selectedCount})',
-                  isSelected: _filterIndex == 2,
-                  onTap: () => setState(() => _filterIndex = 2),
-                ),
-              ],
-            ),
-          ),
-
-          // ─── Live Animated / Video Hero Preview Stage ─────
-          if (set.isAnimated || set.isVideo)
-            _buildLiveHeroPreview(set, filtered),
-
-          // ─── Sticker Grid ────────────────────────────────
-          Expanded(
-            child: filtered.isEmpty
-                ? Center(
-                    child: Text(
-                      'Bu filtreye uygun çıkartma bulunamadı.',
-                      style: TextStyle(
-                        color: AppTheme.textMuted.withAlpha(150),
+                  child: TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 13,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Emojiye göre filtrele (örn: 😂, 🐱, ❤️)...',
+                      hintStyle: TextStyle(
+                        color: AppTheme.textMuted.withAlpha(120),
+                        fontSize: 12,
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.emoji_emotions_outlined,
+                        color: AppTheme.accentPrimary,
+                        size: 18,
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
                       ),
                     ),
-                  )
-                : GridView.builder(
-                    padding: const EdgeInsets.all(16),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 4,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                        ),
-                    itemCount: filtered.length,
-                    itemBuilder: (context, index) {
-                      final sticker = filtered[index];
-                      final thumbId = sticker.thumbFileId ?? sticker.fileId;
-                      final thumbBytes = _thumbnails[thumbId];
-                      final isCurrentHero =
-                          _activePreviewSticker?.fileId == sticker.fileId;
+                    onChanged: (val) =>
+                        setState(() => _emojiSearch = val.trim()),
+                  ),
+                ),
+              ),
 
-                      return GestureDetector(
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              setState(() {
-                                _activePreviewSticker = sticker;
-                                sticker.isSelected = !sticker.isSelected;
-                                _selectAll = set.stickers.every(
-                                  (s) => s.isSelected,
-                                );
-                              });
-                            },
-                            onLongPress: () {
-                              setState(() => _activePreviewSticker = sticker);
-                              _showStickerDetail(sticker);
-                            },
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              decoration: BoxDecoration(
-                                color: sticker.isSelected
-                                    ? (isDark
-                                          ? AppTheme.surfaceDarkElevated
-                                          : const Color(0xFFEFF6FF))
-                                    : (isDark
-                                          ? AppTheme.cardDark
-                                          : AppTheme.cardLight),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: isCurrentHero
-                                      ? AppTheme.primaryBlue
-                                      : (sticker.isSelected
-                                            ? AppTheme.primaryBlue
-                                            : (isDark
-                                                  ? const Color(0xFF334155)
-                                                  : const Color(0xFFE2E8F0))),
-                                  width: isCurrentHero
-                                      ? 2.0
-                                      : (sticker.isSelected ? 2.0 : 1.0),
+            // ─── Filter & Selection Bar ───────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  _FilterChip(
+                    label: 'Tümü ($totalCount)',
+                    isSelected: _filterIndex == 0,
+                    onTap: () => setState(() => _filterIndex = 0),
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterChip(
+                    label: 'Seçili ($selectedCount)',
+                    isSelected: _filterIndex == 1,
+                    onTap: () => setState(() => _filterIndex = 1),
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterChip(
+                    label: 'Kalan (${totalCount - selectedCount})',
+                    isSelected: _filterIndex == 2,
+                    onTap: () => setState(() => _filterIndex = 2),
+                  ),
+                ],
+              ),
+            ),
+
+            // ─── Live Animated / Video Hero Preview Stage ─────
+            if (set.isAnimated || set.isVideo)
+              _buildLiveHeroPreview(set, filtered),
+
+            // ─── Sticker Grid ────────────────────────────────
+            Expanded(
+              child: filtered.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Bu filtreye uygun çıkartma bulunamadı.',
+                        style: TextStyle(
+                          color: AppTheme.textMuted.withAlpha(150),
+                        ),
+                      ),
+                    )
+                  : GridView.builder(
+                      padding: const EdgeInsets.all(16),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 4,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                          ),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final sticker = filtered[index];
+                        final thumbId = sticker.thumbFileId ?? sticker.fileId;
+                        final thumbBytes = _thumbnails[thumbId];
+                        final isCurrentHero =
+                            _activePreviewSticker?.fileId == sticker.fileId;
+
+                        return GestureDetector(
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                setState(() {
+                                  _activePreviewSticker = sticker;
+                                  sticker.isSelected = !sticker.isSelected;
+                                  _selectAll = set.stickers.every(
+                                    (s) => s.isSelected,
+                                  );
+                                });
+                              },
+                              onLongPress: () {
+                                setState(() => _activePreviewSticker = sticker);
+                                _showStickerDetail(sticker);
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                decoration: BoxDecoration(
+                                  color: sticker.isSelected
+                                      ? (isDark
+                                            ? AppTheme.surfaceDarkElevated
+                                            : const Color(0xFFEFF6FF))
+                                      : (isDark
+                                            ? AppTheme.cardDark
+                                            : AppTheme.cardLight),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isCurrentHero
+                                        ? AppTheme.primaryBlue
+                                        : (sticker.isSelected
+                                              ? AppTheme.primaryBlue
+                                              : (isDark
+                                                    ? const Color(0xFF334155)
+                                                    : const Color(0xFFE2E8F0))),
+                                    width: isCurrentHero
+                                        ? 2.0
+                                        : (sticker.isSelected ? 2.0 : 1.0),
+                                  ),
                                 ),
-                              ),
-                              child: Stack(
-                                children: [
-                                  // Sticker image or live vector Lottie
-                                  Center(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(6),
-                                      child:
-                                          sticker.isAnimated &&
-                                              _lottieCache.containsKey(
-                                                sticker.fileId,
+                                child: Stack(
+                                  children: [
+                                    // Sticker image or live vector Lottie
+                                    Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(6),
+                                        child:
+                                            sticker.isAnimated &&
+                                                _lottieCache.containsKey(
+                                                  sticker.fileId,
+                                                )
+                                            ? Lottie.memory(
+                                                _lottieCache[sticker.fileId]!,
+                                                fit: BoxFit.contain,
+                                                repeat: true,
+                                                errorBuilder: (_, _, _) =>
+                                                    thumbBytes != null
+                                                    ? Image.memory(
+                                                        thumbBytes,
+                                                        fit: BoxFit.contain,
+                                                        errorBuilder:
+                                                            (_, _, _) =>
+                                                                _placeholderIcon(
+                                                                  sticker.emoji,
+                                                                ),
+                                                      )
+                                                    : _placeholderIcon(
+                                                        sticker.emoji,
+                                                      ),
                                               )
-                                          ? Lottie.memory(
-                                              _lottieCache[sticker.fileId]!,
-                                              fit: BoxFit.contain,
-                                              repeat: true,
-                                              errorBuilder: (_, _, _) =>
-                                                  thumbBytes != null
+                                            : (thumbBytes != null
                                                   ? Image.memory(
                                                       thumbBytes,
                                                       fit: BoxFit.contain,
@@ -1185,282 +1226,275 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                                                     )
                                                   : _placeholderIcon(
                                                       sticker.emoji,
-                                                    ),
-                                            )
-                                          : (thumbBytes != null
-                                                ? Image.memory(
-                                                    thumbBytes,
-                                                    fit: BoxFit.contain,
-                                                    errorBuilder: (_, _, _) =>
-                                                        _placeholderIcon(
-                                                          sticker.emoji,
-                                                        ),
-                                                  )
-                                                : _placeholderIcon(
-                                                    sticker.emoji,
-                                                  )),
-                                    ),
-                                  ),
-                                  // Selection indicator
-                                  Positioned(
-                                    top: 4,
-                                    right: 4,
-                                    child: AnimatedScale(
-                                      scale: sticker.isSelected ? 1.0 : 0.0,
-                                      duration: const Duration(
-                                        milliseconds: 200,
-                                      ),
-                                      child: Container(
-                                        width: 20,
-                                        height: 20,
-                                        decoration: const BoxDecoration(
-                                          color: AppTheme.primaryBlue,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.check,
-                                          size: 13,
-                                          color: Colors.white,
-                                        ),
+                                                    )),
                                       ),
                                     ),
-                                  ),
-                                  // Emoji label
-                                  Positioned(
-                                    bottom: 4,
-                                    left: 4,
-                                    child: Text(
-                                      sticker.emoji,
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  ),
-                                  // Play / Live badge indicator
-                                  Positioned(
-                                    bottom: 2,
-                                    right: 2,
-                                    child: InkWell(
-                                      onTap: () {
-                                        setState(
-                                          () => _activePreviewSticker = sticker,
-                                        );
-                                        _showStickerDetail(sticker);
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 4,
-                                          vertical: 2,
+                                    // Selection indicator
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: AnimatedScale(
+                                        scale: sticker.isSelected ? 1.0 : 0.0,
+                                        duration: const Duration(
+                                          milliseconds: 200,
                                         ),
-                                        decoration: BoxDecoration(
-                                          color: isCurrentHero
-                                              ? AppTheme.accentSecondary
-                                                    .withAlpha(200)
-                                              : ((sticker.isVideo ||
-                                                        sticker.isAnimated)
-                                                    ? AppTheme.accentPrimary
-                                                          .withAlpha(80)
-                                                    : Colors.black.withAlpha(
-                                                        80,
-                                                      )),
-                                          borderRadius: BorderRadius.circular(
-                                            6,
+                                        child: Container(
+                                          width: 20,
+                                          height: 20,
+                                          decoration: const BoxDecoration(
+                                            color: AppTheme.primaryBlue,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.check,
+                                            size: 13,
+                                            color: Colors.white,
                                           ),
                                         ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              sticker.isVideo ||
-                                                      sticker.isAnimated
-                                                  ? Icons.play_arrow_rounded
-                                                  : Icons.zoom_in_rounded,
-                                              size: 11,
-                                              color: Colors.white,
+                                      ),
+                                    ),
+                                    // Emoji label
+                                    Positioned(
+                                      bottom: 4,
+                                      left: 4,
+                                      child: Text(
+                                        sticker.emoji,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    ),
+                                    // Play / Live badge indicator
+                                    Positioned(
+                                      bottom: 2,
+                                      right: 2,
+                                      child: InkWell(
+                                        onTap: () {
+                                          setState(
+                                            () =>
+                                                _activePreviewSticker = sticker,
+                                          );
+                                          _showStickerDetail(sticker);
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 4,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: isCurrentHero
+                                                ? AppTheme.accentSecondary
+                                                      .withAlpha(200)
+                                                : ((sticker.isVideo ||
+                                                          sticker.isAnimated)
+                                                      ? AppTheme.accentPrimary
+                                                            .withAlpha(80)
+                                                      : Colors.black.withAlpha(
+                                                          80,
+                                                        )),
+                                            borderRadius: BorderRadius.circular(
+                                              6,
                                             ),
-                                            if (sticker.isVideo ||
-                                                sticker.isAnimated) ...[
-                                              const SizedBox(width: 1),
-                                              Text(
-                                                isCurrentHero
-                                                    ? 'OYNATILIYOR'
-                                                    : 'CANLI',
-                                                style: const TextStyle(
-                                                  fontSize: 7.5,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.white,
-                                                  letterSpacing: 0.2,
-                                                ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                sticker.isVideo ||
+                                                        sticker.isAnimated
+                                                    ? Icons.play_arrow_rounded
+                                                    : Icons.zoom_in_rounded,
+                                                size: 11,
+                                                color: Colors.white,
                                               ),
+                                              if (sticker.isVideo ||
+                                                  sticker.isAnimated) ...[
+                                                const SizedBox(width: 1),
+                                                Text(
+                                                  isCurrentHero
+                                                      ? 'OYNATILIYOR'
+                                                      : 'CANLI',
+                                                  style: const TextStyle(
+                                                    fontSize: 7.5,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.white,
+                                                    letterSpacing: 0.2,
+                                                  ),
+                                                ),
+                                              ],
                                             ],
-                                          ],
+                                          ),
                                         ),
                                       ),
                                     ),
+                                  ],
+                                ),
+                              ),
+                            )
+                            .animate()
+                            .fadeIn(
+                              delay: Duration(milliseconds: 40 * (index % 12)),
+                              duration: 250.ms,
+                            )
+                            .scale(
+                              begin: const Offset(0.92, 0.92),
+                              delay: Duration(milliseconds: 40 * (index % 12)),
+                              duration: 250.ms,
+                            );
+                      },
+                    ),
+            ),
+
+            // ─── Bottom Action Bar ────────────────────────────
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? AppTheme.surfaceDark
+                    : AppTheme.surfaceLightMode,
+                border: Border(
+                  top: BorderSide(
+                    color: isDark
+                        ? const Color(0xFF334155)
+                        : const Color(0xFFE2E8F0),
+                  ),
+                ),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_isProcessing) ...[
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _statusText,
+                                  style: TextStyle(
+                                    color: isDark
+                                        ? AppTheme.textPrimary
+                                        : const Color(0xFF1E293B),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                ],
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${(_progress * 100).toInt()}%',
+                                style: const TextStyle(
+                                  color: AppTheme.accentPrimary,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: TweenAnimationBuilder<double>(
+                              tween: Tween<double>(begin: 0.0, end: _progress),
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeOutCubic,
+                              builder: (context, val, _) {
+                                return LinearProgressIndicator(
+                                  value: val,
+                                  minHeight: 7,
+                                  backgroundColor: isDark
+                                      ? AppTheme.surfaceDarkElevated
+                                      : const Color(0xFFE2E8F0),
+                                  valueColor:
+                                      const AlwaysStoppedAnimation<Color>(
+                                        AppTheme.accentPrimary,
+                                      ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: _cancelExport,
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                size: 18,
+                                color: AppTheme.error,
+                              ),
+                              label: const Text(
+                                'İşlemi İptal Et',
+                                style: TextStyle(
+                                  color: AppTheme.error,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(
+                                  color: AppTheme.error.withAlpha(90),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                               ),
                             ),
-                          )
-                          .animate()
-                          .fadeIn(
-                            delay: Duration(milliseconds: 40 * (index % 12)),
-                            duration: 250.ms,
-                          )
-                          .scale(
-                            begin: const Offset(0.92, 0.92),
-                            delay: Duration(milliseconds: 40 * (index % 12)),
-                            duration: 250.ms,
-                          );
-                    },
-                  ),
-          ),
-
-          // ─── Bottom Action Bar ────────────────────────────
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLightMode,
-              border: Border(
-                top: BorderSide(
-                  color: isDark
-                      ? const Color(0xFF334155)
-                      : const Color(0xFFE2E8F0),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      // Info row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '$selectedCount / $totalCount seçili',
+                            style: const TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (selectedCount > 30)
+                            StatusBadge(
+                              label:
+                                  '${(selectedCount / 30).ceil()} parça paket olacak',
+                              color: AppTheme.warning,
+                              icon: Icons.splitscreen_rounded,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: GradientButton(
+                          text: 'WhatsApp\'a Aktar',
+                          icon: Icons.send_rounded,
+                          gradient: AppTheme.whatsappGradient,
+                          isLoading: false,
+                          onPressed: selectedCount < 3
+                              ? null
+                              : _exportToWhatsApp,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
-            child: SafeArea(
-              top: false,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_isProcessing) ...[
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                _statusText,
-                                style: TextStyle(
-                                  color: isDark
-                                      ? AppTheme.textPrimary
-                                      : const Color(0xFF1E293B),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              '${(_progress * 100).toInt()}%',
-                              style: const TextStyle(
-                                color: AppTheme.accentPrimary,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: TweenAnimationBuilder<double>(
-                            tween: Tween<double>(begin: 0.0, end: _progress),
-                            duration: const Duration(milliseconds: 200),
-                            curve: Curves.easeOutCubic,
-                            builder: (context, val, _) {
-                              return LinearProgressIndicator(
-                                value: val,
-                                minHeight: 7,
-                                backgroundColor: isDark
-                                    ? AppTheme.surfaceDarkElevated
-                                    : const Color(0xFFE2E8F0),
-                                valueColor: const AlwaysStoppedAnimation<Color>(
-                                  AppTheme.accentPrimary,
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: _cancelExport,
-                            icon: const Icon(
-                              Icons.close_rounded,
-                              size: 18,
-                              color: AppTheme.error,
-                            ),
-                            label: const Text(
-                              'İşlemi İptal Et',
-                              style: TextStyle(
-                                color: AppTheme.error,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              side: BorderSide(
-                                color: AppTheme.error.withAlpha(90),
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ] else ...[
-                    // Info row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '$selectedCount / $totalCount seçili',
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        if (selectedCount > 30)
-                          StatusBadge(
-                            label:
-                                '${(selectedCount / 30).ceil()} parça paket olacak',
-                            color: AppTheme.warning,
-                            icon: Icons.splitscreen_rounded,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: GradientButton(
-                        text: 'WhatsApp\'a Aktar',
-                        icon: Icons.send_rounded,
-                        gradient: AppTheme.whatsappGradient,
-                        isLoading: false,
-                        onPressed: selectedCount < 3
-                            ? null
-                            : _exportToWhatsApp,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _placeholderIcon(String emoji, {double size = 26}) {
     final isDark = AppTheme.isDark(context);
@@ -1660,7 +1694,9 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1),
+                color: isDark
+                    ? const Color(0xFF475569)
+                    : const Color(0xFFCBD5E1),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1702,7 +1738,9 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
                           : '$_addedCount / $total parça eklendi (WhatsApp paketi başına maks 30 çıkartma)',
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark ? AppTheme.textMutedDark : AppTheme.textMutedLight,
+                        color: isDark
+                            ? AppTheme.textMutedDark
+                            : AppTheme.textMutedLight,
                       ),
                     ),
                   ],
@@ -1717,10 +1755,14 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: isDark ? AppTheme.surfaceDarkElevated : const Color(0xFFF1F5F9),
+              color: isDark
+                  ? AppTheme.surfaceDarkElevated
+                  : const Color(0xFFF1F5F9),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                color: isDark
+                    ? const Color(0xFF334155)
+                    : const Color(0xFFE2E8F0),
               ),
             ),
             child: Row(
@@ -1728,7 +1770,9 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
                 Icon(
                   Icons.info_outline_rounded,
                   size: 16,
-                  color: isDark ? AppTheme.textMutedDark : AppTheme.textMutedLight,
+                  color: isDark
+                      ? AppTheme.textMutedDark
+                      : AppTheme.textMutedLight,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -1736,7 +1780,9 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
                     'WhatsApp her paketi ayrı bir onay ekranıyla kabul eder. Parçaları sırayla onaylayarak kolayca aktarabilirsiniz.',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? AppTheme.textMutedDark : AppTheme.textMutedLight,
+                      color: isDark
+                          ? AppTheme.textMutedDark
+                          : AppTheme.textMutedLight,
                     ),
                   ),
                 ),
@@ -1763,7 +1809,9 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
                 } else if (isNext) {
                   borderColor = AppTheme.whatsappGreen;
                 } else {
-                  borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+                  borderColor = isDark
+                      ? const Color(0xFF334155)
+                      : const Color(0xFFE2E8F0);
                 }
 
                 return Container(
@@ -1771,7 +1819,10 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
                   decoration: BoxDecoration(
                     color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: borderColor, width: isNext ? 1.5 : 1),
+                    border: Border.all(
+                      color: borderColor,
+                      width: isNext ? 1.5 : 1,
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -1788,8 +1839,13 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
                             : Container(
                                 width: 42,
                                 height: 42,
-                                color: isDark ? AppTheme.surfaceDarkElevated : const Color(0xFFE2E8F0),
-                                child: const Icon(Icons.image_outlined, size: 20),
+                                color: isDark
+                                    ? AppTheme.surfaceDarkElevated
+                                    : const Color(0xFFE2E8F0),
+                                child: const Icon(
+                                  Icons.image_outlined,
+                                  size: 20,
+                                ),
                               ),
                       ),
                       const SizedBox(width: 12),
@@ -1814,7 +1870,9 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
                               '${part.stickerData.length} çıkartma ${part.isAnimated ? "• Hareketli" : ""}',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: isDark ? AppTheme.textMutedDark : AppTheme.textMutedLight,
+                                color: isDark
+                                    ? AppTheme.textMutedDark
+                                    : AppTheme.textMutedLight,
                               ),
                             ),
                             if (part.error != null) ...[
@@ -1825,7 +1883,7 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
                                   fontSize: 11,
                                   color: AppTheme.error,
                                 ),
-                                maxLines: 1,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ] else if (part.isCancelled) ...[
@@ -1850,21 +1908,32 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
                           height: 22,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.whatsappGreen),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              AppTheme.whatsappGreen,
+                            ),
                           ),
                         )
                       else if (part.isAddedToWhatsApp)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: AppTheme.success.withAlpha(25),
                             borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: AppTheme.success.withAlpha(80)),
+                            border: Border.all(
+                              color: AppTheme.success.withAlpha(80),
+                            ),
                           ),
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.check_circle_rounded, size: 13, color: AppTheme.success),
+                              Icon(
+                                Icons.check_circle_rounded,
+                                size: 13,
+                                color: AppTheme.success,
+                              ),
                               SizedBox(width: 4),
                               Text(
                                 'Eklendi',
@@ -1883,19 +1952,32 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
                               ? null
                               : () => _exportPart(part),
                           style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
                             minimumSize: Size.zero,
                             side: BorderSide(
-                              color: isNext ? AppTheme.whatsappGreen : (isDark ? const Color(0xFF475569) : const Color(0xFFCBD5E1)),
+                              color: isNext
+                                  ? AppTheme.whatsappGreen
+                                  : (isDark
+                                        ? const Color(0xFF475569)
+                                        : const Color(0xFFCBD5E1)),
                             ),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                           child: Text(
-                            part.isCancelled || part.error != null ? 'Tekrar Dene' : 'Ekle',
+                            part.isCancelled || part.error != null
+                                ? 'Tekrar Dene'
+                                : 'Ekle',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: isNext ? AppTheme.whatsappGreen : AppTheme.textPrimary,
+                              color: isNext
+                                  ? AppTheme.whatsappGreen
+                                  : AppTheme.textPrimary,
                             ),
                           ),
                         ),
@@ -1930,11 +2012,15 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
             ),
             const SizedBox(height: 10),
             TextButton(
-              onPressed: _activeSendingIndex != null ? null : () => Navigator.pop(context),
+              onPressed: _activeSendingIndex != null
+                  ? null
+                  : () => Navigator.pop(context),
               child: Text(
                 'Daha Sonra Tamamla',
                 style: TextStyle(
-                  color: isDark ? AppTheme.textMutedDark : AppTheme.textMutedLight,
+                  color: isDark
+                      ? AppTheme.textMutedDark
+                      : AppTheme.textMutedLight,
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                 ),

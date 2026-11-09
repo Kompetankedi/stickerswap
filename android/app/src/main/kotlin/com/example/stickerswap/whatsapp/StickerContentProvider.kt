@@ -66,7 +66,10 @@ class StickerContentProvider : ContentProvider() {
                 val pack = StickerPackStorage.getStickerPack(context, identifier)
                 val cursor = MatrixCursor(StickerPack.METADATA_COLUMNS)
                 if (pack != null) {
-                    cursor.addRow(pack.toMetadataRow())
+                    val row = pack.toMetadataRow()
+                    // Guarantee the identifier in the row matches the exact identifier requested by WhatsApp
+                    row[0] = identifier
+                    cursor.addRow(row)
                 } else {
                     // Safe fallback metadata row for legacy/orphan packs so WhatsApp validator doesn't abort
                     Log.w(TAG, "Pack $identifier not in storage; returning fallback metadata row for WhatsApp")
@@ -114,6 +117,7 @@ class StickerContentProvider : ContentProvider() {
 
         val file = resolveAssetFile(context, identifier, fileName)
         if (file != null && file.exists()) {
+            Log.i(TAG, "openAssetFile SUCCESS: uri=$uri, path=${file.absolutePath}, size=${file.length()}")
             return try {
                 val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
                 AssetFileDescriptor(pfd, 0, file.length())
@@ -123,15 +127,21 @@ class StickerContentProvider : ContentProvider() {
             }
         }
 
-        Log.w(TAG, "Asset file not found on disk: $fileName (identifier: $identifier). Serving fallback placeholder.")
+        Log.w(TAG, "Asset file not found on disk: $fileName (identifier: $identifier, uri: $uri). Serving fallback placeholder.")
         return getOrCreateFallbackAsset(context, fileName)
     }
 
     private fun resolveAssetFile(context: Context, identifier: String?, fileName: String): File? {
+        val decodedName = try { Uri.decode(fileName) } catch (_: Exception) { fileName }
+
         // 1. Direct path check
         if (fileName.startsWith(File.separator)) {
             val direct = File(fileName)
             if (direct.exists()) return direct
+        }
+        if (decodedName.startsWith(File.separator)) {
+            val directDecoded = File(decodedName)
+            if (directDecoded.exists()) return directDecoded
         }
 
         // 2. Encoded path check (e.g., data._.user._.0._...)
@@ -144,19 +154,25 @@ class StickerContentProvider : ContentProvider() {
             val pack = StickerPackStorage.getStickerPack(context, identifier)
             if (pack != null) {
                 // Is it the tray icon?
+                val trayF = File(pack.trayImage)
                 if (fileName.contains("tray", ignoreCase = true) ||
-                    File(pack.trayImage).name == fileName ||
+                    decodedName.contains("tray", ignoreCase = true) ||
+                    trayF.name.equals(fileName, ignoreCase = true) ||
+                    trayF.name.equals(decodedName, ignoreCase = true) ||
                     pack.trayImage.endsWith(fileName) ||
+                    pack.trayImage.endsWith(decodedName) ||
                     StickerPack.encodePath(pack.trayImage) == fileName
                 ) {
-                    val tray = File(pack.trayImage)
-                    if (tray.exists()) return tray
+                    if (trayF.exists()) return trayF
                 }
 
                 // Is it one of the stickers?
                 val stickerMatch = pack.stickers.firstOrNull {
-                    File(it.path).name == fileName ||
+                    val sName = File(it.path).name
+                    sName.equals(fileName, ignoreCase = true) ||
+                    sName.equals(decodedName, ignoreCase = true) ||
                     it.path.endsWith(fileName) ||
+                    it.path.endsWith(decodedName) ||
                     StickerPack.encodePath(it.path) == fileName
                 }
                 if (stickerMatch != null) {

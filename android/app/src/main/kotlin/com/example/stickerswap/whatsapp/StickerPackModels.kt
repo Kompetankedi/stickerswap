@@ -33,15 +33,13 @@ data class StickerPack(
             "sticker_pack_privacy_policy_website",
             "sticker_pack_license_agreement_website",
             "image_data_version",
-            "whatsapp_will_not_cache_stickers",
+            "avoid_cache",
             "animated_sticker_pack"
         )
 
         val STICKER_COLUMNS = arrayOf(
             "sticker_file_name",
-            "sticker_emoji",
-            "sticker_accessibility_text",
-            "is_animated_sticker"
+            "sticker_emoji"
         )
 
         fun encodePath(path: String): String {
@@ -67,7 +65,7 @@ data class StickerPack(
                 "",
                 "1",
                 0,
-                1
+                0
             )
         }
 
@@ -77,9 +75,7 @@ data class StickerPack(
                 cursor.addRow(
                     arrayOf(
                         "sticker_$i.webp",
-                        "⭐",
-                        "",
-                        1
+                        "⭐"
                     )
                 )
             }
@@ -110,10 +106,14 @@ data class StickerPack(
                     val emojisArr = item.optJSONArray("emojis")
                     if (emojisArr != null) {
                         for (j in 0 until emojisArr.length()) {
-                            emojis.add(emojisArr.getString(j))
+                            val em = emojisArr.getString(j).trim()
+                            if (em.isNotEmpty()) {
+                                emojis.add(em)
+                            }
                         }
                     }
-                    stickers.add(StickerItem(path, emojis))
+                    val safeEmojis = if (emojis.isEmpty()) listOf("⭐") else emojis.take(3)
+                    stickers.add(StickerItem(path, safeEmojis))
                 } else if (item is String) {
                     stickers.add(StickerItem(item, listOf("⭐")))
                 }
@@ -187,14 +187,13 @@ data class StickerPack(
     fun toStickersCursor(): MatrixCursor {
         val cursor = MatrixCursor(STICKER_COLUMNS)
         stickers.forEach { sticker ->
-            val emojiStr = sticker.emojis.joinToString(",")
+            val safeEmojis = if (sticker.emojis.isEmpty()) listOf("⭐") else sticker.emojis.take(3)
+            val emojiStr = safeEmojis.joinToString(",")
             val fileName = File(sticker.path).name
             cursor.addRow(
                 arrayOf(
                     if (fileName.isNotEmpty()) fileName else encodePath(sticker.path),
-                    emojiStr,
-                    "",
-                    if (animatedStickerPack) 1 else 0
+                    emojiStr
                 )
             )
         }

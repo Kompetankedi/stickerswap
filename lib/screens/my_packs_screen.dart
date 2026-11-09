@@ -66,9 +66,10 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
       HapticFeedback.lightImpact();
       final stickerData = <Map<String, dynamic>>[];
       for (int i = 0; i < pack.stickerPaths.length; i++) {
+        final rawEmoji = i < pack.emojis.length ? pack.emojis[i] : '⭐';
         stickerData.add({
           'path': pack.stickerPaths[i],
-          'emojis': [i < pack.emojis.length ? pack.emojis[i] : '⭐'],
+          'emojis': WhatsAppService.sanitizeEmojis(rawEmoji),
         });
       }
 

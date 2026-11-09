@@ -1,4 +1,8 @@
+import 'dart:io';
+import 'package:characters/characters.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 
 enum WhatsAppExportStatus {
   added,
@@ -71,6 +75,42 @@ class WhatsAppService {
     return result;
   }
 
+  /// Sanitizes raw emoji text into a list of 1 to 3 valid Unicode emojis.
+  /// Standard WhatsApp Stickers Validator rule:
+  /// - Each sticker must have at least 1 and at most 3 emojis.
+  /// - Empty or invalid emojis cause WhatsApp to reject the sticker pack.
+  /// - If no valid emojis found, safely falls back to ['⭐'].
+  static List<String> sanitizeEmojis(String? rawEmoji) {
+    if (rawEmoji == null || rawEmoji.trim().isEmpty) {
+      return const ['⭐'];
+    }
+
+    final emojis = <String>[];
+    for (final char in rawEmoji.characters) {
+      final isEmoji = char.runes.any((rune) {
+        return (rune >= 0x1F300 && rune <= 0x1FAFF) ||
+            (rune >= 0x2600 && rune <= 0x27BF) ||
+            (rune >= 0x2300 && rune <= 0x23FF) ||
+            (rune >= 0x2B50 && rune <= 0x2B55) ||
+            (rune >= 0x1F1E6 && rune <= 0x1F1FF) ||
+            rune == 0x203C ||
+            rune == 0x2049 ||
+            rune == 0x00A9 ||
+            rune == 0x00AE;
+      });
+
+      if (isEmoji && char.trim().isNotEmpty) {
+        emojis.add(char);
+      }
+      if (emojis.length == 3) break;
+    }
+
+    if (emojis.isEmpty) {
+      return const ['⭐'];
+    }
+    return emojis;
+  }
+
   /// Sends a processed sticker pack to WhatsApp.
   ///
   /// [identifier] – unique pack identifier (e.g., "pack_name_part1")
@@ -86,15 +126,13 @@ class WhatsAppService {
     required List<Map<String, dynamic>> stickerData,
     bool animatedStickerPack = false,
   }) async {
-    // Minimum 3 stickers required by WhatsApp
+    // 1. Pack size limits (WhatsApp requires 3 to 30 stickers)
     if (stickerData.length < 3) {
       throw Exception(
         'WhatsApp en az 3 çıkartma gerektirir. '
         'Pakette sadece ${stickerData.length} adet var.',
       );
     }
-
-    // Maximum 30 stickers per WhatsApp pack
     if (stickerData.length > 30) {
       throw Exception(
         'WhatsApp tek pakette en fazla 30 çıkartmaya izin verir. '
@@ -102,7 +140,69 @@ class WhatsAppService {
       );
     }
 
-    // Sanitize strings to avoid Android StickerPackValidator rejection
+    // 2. Tray icon validation (must exist and be <= 50 KB)
+    final trayFile = File(trayPath);
+    if (!await trayFile.exists()) {
+      throw Exception('Tepsi simgesi (tray icon) bulunamadı: $trayPath');
+    }
+    final traySize = await trayFile.length();
+    if (traySize > 50 * 1024) {
+      throw Exception(
+        'Tepsi simgesi boyutu WhatsApp 50 KB sınırını aşıyor: '
+        '${(traySize / 1024).toStringAsFixed(1)} KB.',
+      );
+    }
+
+    // 3. Sticker files and emojis pre-validation (Strict WhatsApp compliance)
+    final maxAllowedBytes = animatedStickerPack ? 500 * 1024 : 100 * 1024;
+    final sanitizedStickers = <Map<String, dynamic>>[];
+
+    for (int i = 0; i < stickerData.length; i++) {
+      final item = stickerData[i];
+      final path = item['path'] as String?;
+      if (path == null || path.isEmpty) {
+        throw Exception('${i + 1}. çıkartma dosya yolu belirtilmemiş.');
+      }
+      final file = File(path);
+      if (!await file.exists()) {
+        throw Exception('${i + 1}. çıkartma dosyası bulunamadı: $path');
+      }
+      final size = await file.length();
+      if (size == 0) {
+        throw Exception('${i + 1}. çıkartma dosyası boş (0 bayt): $path');
+      }
+      if (size > maxAllowedBytes) {
+        final limitKb = animatedStickerPack ? 500 : 100;
+        final actualKb = (size / 1024).toStringAsFixed(1);
+        throw Exception(
+          '${i + 1}. çıkartma boyutu ($actualKb KB) '
+          'WhatsApp $limitKb KB sınırını aşıyor: ${p.basename(path)}',
+        );
+      }
+
+      // Sanitize emojis to ensure exactly 1 to 3 valid Unicode emojis
+      final rawEmojis = item['emojis'];
+      final emojisList = <String>[];
+      if (rawEmojis is List) {
+        for (final e in rawEmojis) {
+          if (e != null) {
+            emojisList.addAll(sanitizeEmojis(e.toString()));
+          }
+        }
+      } else if (rawEmojis is String) {
+        emojisList.addAll(sanitizeEmojis(rawEmojis));
+      }
+      final safeEmojis = emojisList.isEmpty
+          ? const ['⭐']
+          : (emojisList.length > 3 ? emojisList.take(3).toList() : emojisList);
+
+      sanitizedStickers.add({
+        'path': path,
+        'emojis': safeEmojis,
+      });
+    }
+
+    // 4. Sanitize pack identifier and metadata strings
     final safeIdentifier = sanitizeIdentifier(identifier);
     final safeName = sanitizeForWhatsApp(name, fallback: 'Sticker Pack');
     final safePublisher = sanitizeForWhatsApp(publisher, fallback: 'StickerSwap');
@@ -112,7 +212,7 @@ class WhatsAppService {
       'name': safeName,
       'publisher': safePublisher,
       'trayImage': trayPath,
-      'stickers': stickerData,
+      'stickers': sanitizedStickers,
       'animatedStickerPack': animatedStickerPack,
     };
 
@@ -128,16 +228,26 @@ class WhatsAppService {
       } else if (statusStr == 'cancelled') {
         return const WhatsAppExportResult(status: WhatsAppExportStatus.cancelled);
       } else {
-        final errorMsg = res?['error'] as String? ?? 'Bilinmeyen aktarım hatası';
+        var errorMsg = res?['error'] as String? ?? 'Bilinmeyen aktarım hatası';
+        if (errorMsg.contains('handleStickerPackPreviewResult') ||
+            errorMsg.contains('validation_error')) {
+          errorMsg =
+              'WhatsApp çıkartma paketini doğrulayamadı (handleStickerPackPreviewResult). '
+              'Lütfen WhatsApp sürümünün güncel olduğundan emin olun.';
+        }
         return WhatsAppExportResult(
           status: WhatsAppExportStatus.error,
           errorMessage: errorMsg,
         );
       }
     } on PlatformException catch (e) {
+      var msg = e.message ?? e.code;
+      if (msg.contains('handleStickerPackPreviewResult')) {
+        msg = 'WhatsApp doğrulama hatası (handleStickerPackPreviewResult).';
+      }
       return WhatsAppExportResult(
         status: WhatsAppExportStatus.error,
-        errorMessage: e.message ?? e.code,
+        errorMessage: msg,
       );
     } catch (e) {
       return WhatsAppExportResult(

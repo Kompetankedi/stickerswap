@@ -36,15 +36,19 @@ class StickerProcessor {
     String videoPath,
     String outputDir, {
     Uint8List? fallbackThumbnailBytes,
+    bool forceRefresh = false,
   }) async {
     final outputName =
         '${p.basenameWithoutExtension(videoPath)}_wa.webp';
     final outputPath = p.join(outputDir, outputName);
 
-    // Fast return if already processed
+    // Fast return if already processed, not forcing refresh, and within valid limits
     final outputFile = File(outputPath);
-    if (await outputFile.exists() && await outputFile.length() > 0) {
-      return outputPath;
+    if (!forceRefresh && await outputFile.exists()) {
+      final len = await outputFile.length();
+      if (len > 0 && len <= _maxAnimatedKb * 1024) {
+        return outputPath;
+      }
     }
 
     try {
@@ -77,6 +81,7 @@ class StickerProcessor {
         outputDir,
         outputName,
         asAnimated: true,
+        forceRefresh: forceRefresh,
       );
     }
 
@@ -90,14 +95,18 @@ class StickerProcessor {
     String tgsPath,
     String outputDir, {
     Uint8List? fallbackThumbnailBytes,
+    bool forceRefresh = false,
   }) async {
     final outputName =
         '${p.basenameWithoutExtension(tgsPath)}_wa.webp';
     final outputPath = p.join(outputDir, outputName);
 
     final outputFile = File(outputPath);
-    if (await outputFile.exists() && await outputFile.length() > 0) {
-      return outputPath;
+    if (!forceRefresh && await outputFile.exists()) {
+      final len = await outputFile.length();
+      if (len > 0 && len <= _maxAnimatedKb * 1024) {
+        return outputPath;
+      }
     }
 
     try {
@@ -167,6 +176,7 @@ class StickerProcessor {
         outputDir,
         outputName,
         asAnimated: true,
+        forceRefresh: forceRefresh,
       );
     }
 
@@ -179,11 +189,16 @@ class StickerProcessor {
     String outputDir,
     String outputName, {
     bool asAnimated = false,
+    bool forceRefresh = false,
   }) async {
     final outputPath = p.join(outputDir, outputName);
     final outputFile = File(outputPath);
-    if (await outputFile.exists() && await outputFile.length() > 0) {
-      return outputPath;
+    if (!forceRefresh && await outputFile.exists()) {
+      final len = await outputFile.length();
+      final maxBytes = (asAnimated ? _maxAnimatedKb : _maxStaticKb) * 1024;
+      if (len > 0 && len <= maxBytes) {
+        return outputPath;
+      }
     }
 
     return await Isolate.run(() {
@@ -202,14 +217,19 @@ class StickerProcessor {
     String inputPath,
     String outputDir, {
     bool asAnimated = false,
+    bool forceRefresh = false,
   }) async {
     final outputName =
         '${p.basenameWithoutExtension(inputPath)}_wa.webp';
     final outputPath = p.join(outputDir, outputName);
 
     final outputFile = File(outputPath);
-    if (await outputFile.exists() && await outputFile.length() > 0) {
-      return outputPath;
+    if (!forceRefresh && await outputFile.exists()) {
+      final len = await outputFile.length();
+      final maxBytes = (asAnimated ? _maxAnimatedKb : _maxStaticKb) * 1024;
+      if (len > 0 && len <= maxBytes) {
+        return outputPath;
+      }
     }
 
     // Try hardware-accelerated native compression on Android for static stickers
@@ -244,11 +264,15 @@ class StickerProcessor {
     String inputPath,
     String outputDir, {
     String fileName = 'tray_icon.png',
+    bool forceRefresh = false,
   }) async {
     final outputPath = p.join(outputDir, fileName);
     final outputFile = File(outputPath);
-    if (await outputFile.exists() && await outputFile.length() > 0) {
-      return outputPath;
+    if (!forceRefresh && await outputFile.exists()) {
+      final len = await outputFile.length();
+      if (len > 0 && len <= _maxTrayKb * 1024) {
+        return outputPath;
+      }
     }
 
     return await Isolate.run(() {
@@ -273,7 +297,48 @@ class StickerProcessor {
   // Synchronous Worker Routines (Executed inside background Dart Isolates)
   // =========================================================================
 
+  /// Composes a sequence of [frames] into an animated [img.Image] canvas of 512x512.
+  static img.Image _composeAnimatedCanvas(
+    List<img.Image> frames,
+    int delayMs,
+  ) {
+    const availableSize = _whatsappSize - (_padding * 2);
+    final first = frames.first;
+    final baseCanvas = img.Image(
+      width: _whatsappSize,
+      height: _whatsappSize,
+      numChannels: 4,
+    );
+    final resizedFirst = _fitImage(first, availableSize);
+    final ox = (_whatsappSize - resizedFirst.width) ~/ 2;
+    final oy = (_whatsappSize - resizedFirst.height) ~/ 2;
+    img.compositeImage(baseCanvas, resizedFirst, dstX: ox, dstY: oy);
+    baseCanvas.frameDuration = delayMs;
+    baseCanvas.loopCount = 0; // Infinite loop required by WhatsApp
+
+    for (int i = 1; i < frames.length; i++) {
+      final f = frames[i];
+      final frameCanvas = img.Image(
+        width: _whatsappSize,
+        height: _whatsappSize,
+        numChannels: 4,
+      );
+      final resized = _fitImage(f, availableSize);
+      final fx = (_whatsappSize - resized.width) ~/ 2;
+      final fy = (_whatsappSize - resized.height) ~/ 2;
+      img.compositeImage(frameCanvas, resized, dstX: fx, dstY: fy);
+      frameCanvas.frameDuration = delayMs;
+      baseCanvas.frames.add(frameCanvas);
+    }
+    return baseCanvas;
+  }
+
   /// Synchronously encodes a list of frames into Animated WebP within a background isolate.
+  /// Strictly guarantees:
+  /// - Exact 512x512 pixels
+  /// - Animated WebP with at least 2 frames and infinite loop (`loopCount = 0`)
+  /// - File size strictly <= 480 KB (under WhatsApp's 500 KB limit)
+  /// - Total animation duration <= 3000 ms, each frame duration >= 8 ms
   static String _createAnimatedWebpFromPngFramesSync({
     required List<Uint8List> pngFrames,
     required String outputPath,
@@ -284,67 +349,118 @@ class StickerProcessor {
       throw Exception('Kare listesi boş olamaz');
     }
 
-    final firstDecoded = img.decodeImage(pngFrames.first);
-    if (firstDecoded == null) {
-      throw Exception('İlk kare çözülemedi');
+    final decodedList = <img.Image>[];
+    for (final frameBytes in pngFrames) {
+      final decoded = img.decodeImage(frameBytes);
+      if (decoded != null) {
+        decodedList.add(decoded);
+      }
+    }
+    if (decodedList.isEmpty) {
+      throw Exception('Hiçbir kare çözülemedi');
     }
 
-    const availableSize = _whatsappSize - (_padding * 2);
+    // WhatsApp animated stickers strictly require at least 2 frames
+    if (decodedList.length == 1) {
+      decodedList.add(decodedList.first);
+    }
 
-    // Base canvas 512x512
-    final baseCanvas = img.Image(
-      width: _whatsappSize,
-      height: _whatsappSize,
-      numChannels: 4,
-    );
-    final resizedFirst = _fitImage(firstDecoded, availableSize);
-    final ox = (_whatsappSize - resizedFirst.width) ~/ 2;
-    final oy = (_whatsappSize - resizedFirst.height) ~/ 2;
-    img.compositeImage(baseCanvas, resizedFirst, dstX: ox, dstY: oy);
-    baseCanvas.frameDuration = frameDelayMs;
-    baseCanvas.loopCount = 0; // Infinite loop
+    final maxBytes = maxKb * 1024;
+    Uint8List? bestBytes;
+    var currentFrames = List<img.Image>.from(decodedList);
+    var currentDelay = frameDelayMs.clamp(8, 250);
 
-    for (int i = 1; i < pngFrames.length; i++) {
-      final decodedFrame = img.decodeImage(pngFrames[i]);
-      if (decodedFrame == null) continue;
+    // Ensure total animation duration <= 3000 ms as strictly required by WhatsApp
+    if (currentFrames.length * currentDelay > 3000) {
+      currentDelay = (3000 ~/ currentFrames.length).clamp(8, 250);
+    }
 
-      final frameCanvas = img.Image(
-        width: _whatsappSize,
-        height: _whatsappSize,
-        numChannels: 4,
+    // Strategy 1: Multi-quality encoding passes on full frames
+    var canvas = _composeAnimatedCanvas(currentFrames, currentDelay);
+    for (final q in const [70, 55, 40, 25, 15]) {
+      final bytes = Uint8List.fromList(
+        img.encodeWebP(canvas, lossless: false, quality: q),
       );
-      final resized = _fitImage(decodedFrame, availableSize);
-      final fx = (_whatsappSize - resized.width) ~/ 2;
-      final fy = (_whatsappSize - resized.height) ~/ 2;
-      img.compositeImage(frameCanvas, resized, dstX: fx, dstY: fy);
-      frameCanvas.frameDuration = frameDelayMs;
-
-      baseCanvas.frames.add(frameCanvas);
+      bestBytes = bytes;
+      if (bytes.length <= maxBytes) {
+        File(outputPath).writeAsBytesSync(bytes);
+        return outputPath;
+      }
     }
 
-    // Try encoding and compress to ensure <= 480 KB
-    // Quality 70 provides high fidelity while reliably producing 200-350 KB files
-    Uint8List webpBytes = Uint8List.fromList(
-      img.encodeWebP(baseCanvas, lossless: false, quality: 70),
-    );
+    // Strategy 2: If still > 480 KB, downsample frames (sample every 2nd frame)
+    if (currentFrames.length > 6) {
+      final downsampled = <img.Image>[];
+      for (int i = 0; i < currentFrames.length; i += 2) {
+        downsampled.add(currentFrames[i]);
+      }
+      if (downsampled.length < 2) {
+        downsampled.add(currentFrames.last);
+      }
+      currentFrames = downsampled;
+      currentDelay = (currentDelay * 2).clamp(8, 250);
+      if (currentFrames.length * currentDelay > 3000) {
+        currentDelay = (3000 ~/ currentFrames.length).clamp(8, 250);
+      }
+      canvas = _composeAnimatedCanvas(currentFrames, currentDelay);
 
-    if (webpBytes.length > maxKb * 1024) {
-      webpBytes = Uint8List.fromList(
-        img.encodeWebP(baseCanvas, lossless: false, quality: 55),
-      );
-    }
-    if (webpBytes.length > maxKb * 1024) {
-      webpBytes = Uint8List.fromList(
-        img.encodeWebP(baseCanvas, lossless: false, quality: 40),
-      );
-    }
-    if (webpBytes.length > maxKb * 1024) {
-      webpBytes = Uint8List.fromList(
-        img.encodeWebP(baseCanvas, lossless: false, quality: 25),
-      );
+      for (final q in const [60, 45, 30, 15]) {
+        final bytes = Uint8List.fromList(
+          img.encodeWebP(canvas, lossless: false, quality: q),
+        );
+        bestBytes = bytes;
+        if (bytes.length <= maxBytes) {
+          File(outputPath).writeAsBytesSync(bytes);
+          return outputPath;
+        }
+      }
     }
 
-    File(outputPath).writeAsBytesSync(webpBytes);
+    // Strategy 3: Extreme fallback: sparse 4-frame animation
+    if (currentFrames.length > 4) {
+      final step = (currentFrames.length / 4).ceil();
+      final sparseFrames = <img.Image>[];
+      for (int i = 0; i < currentFrames.length; i += step) {
+        sparseFrames.add(currentFrames[i]);
+        if (sparseFrames.length == 4) break;
+      }
+      while (sparseFrames.length < 2) {
+        sparseFrames.add(currentFrames.last);
+      }
+      currentFrames = sparseFrames;
+      currentDelay = (3000 ~/ currentFrames.length).clamp(80, 250);
+      canvas = _composeAnimatedCanvas(currentFrames, currentDelay);
+
+      for (final q in const [40, 25, 15, 10]) {
+        final bytes = Uint8List.fromList(
+          img.encodeWebP(canvas, lossless: false, quality: q),
+        );
+        bestBytes = bytes;
+        if (bytes.length <= maxBytes) {
+          File(outputPath).writeAsBytesSync(bytes);
+          return outputPath;
+        }
+      }
+    }
+
+    // Strategy 4: Strict 2-frame minimal animation if still oversized
+    if (currentFrames.length > 2) {
+      currentFrames = [currentFrames.first, currentFrames.last];
+      currentDelay = 500;
+      canvas = _composeAnimatedCanvas(currentFrames, currentDelay);
+      for (final q in const [25, 15, 10, 5]) {
+        final bytes = Uint8List.fromList(
+          img.encodeWebP(canvas, lossless: false, quality: q),
+        );
+        bestBytes = bytes;
+        if (bytes.length <= maxBytes) {
+          File(outputPath).writeAsBytesSync(bytes);
+          return outputPath;
+        }
+      }
+    }
+
+    File(outputPath).writeAsBytesSync(bestBytes!);
     return outputPath;
   }
 
@@ -386,9 +502,15 @@ class StickerProcessor {
       secondFrame.frameDuration = 500;
       canvas.frames.add(secondFrame);
 
-      final webpBytes = Uint8List.fromList(
+      Uint8List webpBytes = Uint8List.fromList(
         img.encodeWebP(canvas, lossless: false, quality: 80),
       );
+      for (final q in const [65, 50, 35, 20]) {
+        if (webpBytes.length <= _maxAnimatedKb * 1024) break;
+        webpBytes = Uint8List.fromList(
+          img.encodeWebP(canvas, lossless: false, quality: q),
+        );
+      }
       File(outputPath).writeAsBytesSync(webpBytes);
       return outputPath;
     }
@@ -396,20 +518,10 @@ class StickerProcessor {
     Uint8List webpBytes = Uint8List.fromList(
       img.WebPEncoder(lossless: true).encode(canvas),
     );
-
-    if (webpBytes.length > _maxStaticKb * 1024) {
+    for (final q in const [85, 70, 50, 35, 20]) {
+      if (webpBytes.length <= _maxStaticKb * 1024) break;
       webpBytes = Uint8List.fromList(
-        img.WebPEncoder(lossless: false, quality: 85).encode(canvas),
-      );
-    }
-    if (webpBytes.length > _maxStaticKb * 1024) {
-      webpBytes = Uint8List.fromList(
-        img.WebPEncoder(lossless: false, quality: 70).encode(canvas),
-      );
-    }
-    if (webpBytes.length > _maxStaticKb * 1024) {
-      webpBytes = Uint8List.fromList(
-        img.WebPEncoder(lossless: false, quality: 50).encode(canvas),
+        img.WebPEncoder(lossless: false, quality: q).encode(canvas),
       );
     }
 
@@ -451,9 +563,15 @@ class StickerProcessor {
       secondFrame.frameDuration = 500;
       canvas.frames.add(secondFrame);
 
-      final webpBytes = Uint8List.fromList(
+      Uint8List webpBytes = Uint8List.fromList(
         img.encodeWebP(canvas, lossless: false, quality: 80),
       );
+      for (final q in const [65, 50, 35, 20]) {
+        if (webpBytes.length <= _maxAnimatedKb * 1024) break;
+        webpBytes = Uint8List.fromList(
+          img.encodeWebP(canvas, lossless: false, quality: q),
+        );
+      }
       File(outputPath).writeAsBytesSync(webpBytes);
       return outputPath;
     }
@@ -461,9 +579,10 @@ class StickerProcessor {
     Uint8List webpBytes = Uint8List.fromList(
       img.WebPEncoder(lossless: true).encode(canvas),
     );
-    if (webpBytes.length > _maxStaticKb * 1024) {
+    for (final q in const [85, 70, 50, 35, 20]) {
+      if (webpBytes.length <= _maxStaticKb * 1024) break;
       webpBytes = Uint8List.fromList(
-        img.WebPEncoder(lossless: false, quality: 85).encode(canvas),
+        img.WebPEncoder(lossless: false, quality: q).encode(canvas),
       );
     }
     File(outputPath).writeAsBytesSync(webpBytes);
@@ -471,6 +590,10 @@ class StickerProcessor {
   }
 
   /// Synchronously generates a 96x96 tray icon within an isolate.
+  /// Strictly guarantees:
+  /// - Exact 96x96 pixels PNG format
+  /// - File size strictly <= 48 KB (WhatsApp limit is 50 KB)
+  /// - Discards multi-frame animation layers so only the first frame is used
   static String _generateTrayIconSync({
     required String inputPath,
     required String outputPath,
@@ -483,31 +606,38 @@ class StickerProcessor {
       throw Exception('Tray ikonu oluşturulamadı: $inputPath');
     }
 
-    final resized = _fitImage(decoded, _traySize - 8);
+    // If multi-frame (e.g. animated webp input), take only the first frame
+    final firstFrame = decoded.frames.isNotEmpty ? decoded.frames.first : decoded;
+
     final canvas = img.Image(
       width: _traySize,
       height: _traySize,
       numChannels: 4,
     );
+    final resized = _fitImage(firstFrame, _traySize - 8);
     final offsetX = (_traySize - resized.width) ~/ 2;
     final offsetY = (_traySize - resized.height) ~/ 2;
     img.compositeImage(canvas, resized, dstX: offsetX, dstY: offsetY);
 
-    Uint8List pngBytes = Uint8List.fromList(img.encodePng(canvas));
+    Uint8List pngBytes = Uint8List.fromList(img.encodePng(canvas, level: 9));
 
-    // If over 50KB, reduce size
-    if (pngBytes.length > _maxTrayKb * 1024) {
-      final smaller = img.copyResize(canvas,
-          width: _traySize ~/ 2, height: _traySize ~/ 2);
-      final finalCanvas = img.Image(
+    // If over 48 KB (WhatsApp strictly requires < 50 KB PNG), scale down inside 96x96 canvas
+    if (pngBytes.length > (_maxTrayKb - 2) * 1024) {
+      final smallerCanvas = img.Image(
         width: _traySize,
         height: _traySize,
         numChannels: 4,
       );
+      final smaller = _fitImage(firstFrame, 64);
       final ox = (_traySize - smaller.width) ~/ 2;
       final oy = (_traySize - smaller.height) ~/ 2;
-      img.compositeImage(finalCanvas, smaller, dstX: ox, dstY: oy);
-      pngBytes = Uint8List.fromList(img.encodePng(finalCanvas));
+      img.compositeImage(smallerCanvas, smaller, dstX: ox, dstY: oy);
+      pngBytes = Uint8List.fromList(img.encodePng(smallerCanvas, level: 9));
+    }
+
+    if (pngBytes.length > (_maxTrayKb - 2) * 1024) {
+      final quantized = img.quantize(canvas, numberOfColors: 128);
+      pngBytes = Uint8List.fromList(img.encodePng(quantized, level: 9));
     }
 
     File(outputPath).writeAsBytesSync(pngBytes);

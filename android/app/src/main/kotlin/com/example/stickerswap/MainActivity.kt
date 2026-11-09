@@ -187,12 +187,18 @@ class MainActivity : FlutterActivity() {
                                             }
 
                                             try {
-                                                val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, intArrayOf(stride, stride))
+                                                val yuvImage = try {
+                                                    YuvImage(nv21, ImageFormat.NV21, width, height, null)
+                                                } catch (_: Exception) {
+                                                    YuvImage(nv21, ImageFormat.NV21, width, height, intArrayOf(stride, stride))
+                                                }
                                                 val stream = ByteArrayOutputStream()
                                                 yuvImage.compressToJpeg(Rect(0, 0, width, height), 85, stream)
                                                 frames.add(stream.toByteArray())
                                                 nextTargetTimeUs += targetIntervalUs
-                                            } catch (_: Exception) {}
+                                            } catch (e: Exception) {
+                                                Log.w("MainActivity", "Frame extraction compressToJpeg failed: ${e.message}")
+                                            }
                                         }
                                     }
                                     decoder.releaseOutputBuffer(outIdx, false)
@@ -217,16 +223,29 @@ class MainActivity : FlutterActivity() {
                         val retriever = MediaMetadataRetriever()
                         try {
                             retriever.setDataSource(videoPath)
-                            val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                            val b1 = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                                 retriever.getScaledFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST, 512, 512)
                             } else {
                                 retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST)
                             }
-                            if (bitmap != null) {
-                                val stream = ByteArrayOutputStream()
-                                bitmap.compress(Bitmap.CompressFormat.PNG, 85, stream)
-                                frames.add(stream.toByteArray())
-                                bitmap.recycle()
+                            val b2 = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                                retriever.getScaledFrameAtTime(500000L, MediaMetadataRetriever.OPTION_CLOSEST, 512, 512)
+                            } else {
+                                retriever.getFrameAtTime(500000L, MediaMetadataRetriever.OPTION_CLOSEST)
+                            }
+                            if (b1 != null) {
+                                val s1 = ByteArrayOutputStream()
+                                b1.compress(Bitmap.CompressFormat.PNG, 85, s1)
+                                frames.add(s1.toByteArray())
+                                b1.recycle()
+                            }
+                            if (b2 != null) {
+                                val s2 = ByteArrayOutputStream()
+                                b2.compress(Bitmap.CompressFormat.PNG, 85, s2)
+                                frames.add(s2.toByteArray())
+                                b2.recycle()
+                            } else if (frames.isNotEmpty()) {
+                                frames.add(frames.first()) // Duplicate frame to guarantee >= 2 frames for animated stickers
                             }
                         } catch (e: Exception) {
                             Log.e("MainActivity", "Fallback retriever failed", e)
@@ -291,13 +310,10 @@ class MainActivity : FlutterActivity() {
                         var stream = ByteArrayOutputStream()
                         finalBitmap.compress(format, quality, stream)
 
-                        if (stream.size() > 100 * 1024) {
-                            quality = 70
-                            stream = ByteArrayOutputStream()
-                            finalBitmap.compress(format, quality, stream)
-                        }
-                        if (stream.size() > 100 * 1024) {
-                            quality = 50
+                        val qualities = intArrayOf(70, 55, 40, 25, 15)
+                        var qIdx = 0
+                        while (stream.size() > 96 * 1024 && qIdx < qualities.size) {
+                            quality = qualities[qIdx++]
                             stream = ByteArrayOutputStream()
                             finalBitmap.compress(format, quality, stream)
                         }

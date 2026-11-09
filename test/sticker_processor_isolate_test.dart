@@ -69,5 +69,30 @@ void main() {
     expect(decoded!.width, 96);
     expect(decoded.height, 96);
   });
+
+  test('processImageBytes asAnimated produces compliant animated WebP <= 480KB with at least 2 frames', () async {
+    final sampleImg = img.Image(width: 400, height: 400);
+    img.fill(sampleImg, color: img.ColorUint8.rgba(200, 50, 100, 255));
+    final pngBytes = img.encodePng(sampleImg);
+
+    final outputPath = await processor.processImageBytes(
+      pngBytes,
+      tempDir.path,
+      'test_anim_wa.webp',
+      asAnimated: true,
+    );
+
+    final file = File(outputPath);
+    expect(await file.exists(), isTrue);
+    final fileBytes = await file.readAsBytes();
+    expect(fileBytes.length, greaterThan(0));
+    expect(fileBytes.length, lessThanOrEqualTo(480 * 1024)); // <= 480 KB strict ceiling
+
+    final decoded = img.decodeWebP(fileBytes);
+    expect(decoded, isNotNull);
+    expect(decoded!.width, 512);
+    expect(decoded.height, 512);
+    expect(decoded.numFrames, greaterThanOrEqualTo(2));
+  });
 }
 
