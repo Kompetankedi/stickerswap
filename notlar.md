@@ -83,6 +83,36 @@
   - Zaten tam indirilmiş geçerli dosyaların ağ hatasında silinmeden korunması ve sadece başarısız olan dosyanın tekrar talep edilmesi.
 
 ---
+
+### 4. Hareketli Çıkartmaların Sadece İlk ~1 Saniyesinin Kaydedilmesi / Animasyonun Erken Başa Sarması (Animated Duration Truncation)
+- **Öncelik:** 🟡 **ORTA / YÜKSEK (4. Öncelik - Kullanıcı Deneyimi & Animasyon Bütünlüğü)**
+- **Durum:** 🔍 **İNCELENDİ & KÖK NEDEN TESPİT EDİLDİ (Eylem Planı Hazırlandı)**
+- **Sorun Tanımı:**
+  - Forumdaki bir kullanıcının ("Vanilla") geri bildirimi:
+    > *"Ek olarak bir sorun daha var, hareketli çıkartmaların sadece ilk 1 saniyesini kaydediyor sanırım, örneğin dans eden bir kedi var pakette, tam dans edecek mesela ama saniyesi kırpılmış gibi sürekli aynı hareketi tekrarlıyor, tüm hareketli stickerlarda durum aynı. Umarım işine yarar. 🤠"*
+  - Ekran görüntüsü: [`assets/screenshots/forum_animated_duration_issue.png`](file:///Users/kompetankedi/Documents/GitHub/stickerswap/assets/screenshots/forum_animated_duration_issue.png)
+  - Telegram üzerinde 2.5 - 3.0 saniye süren zengin video ve lottie animasyonları WhatsApp'a aktarıldığında tüm süresini tamamlayamamakta; hareket henüz 1. saniyesindeyken aniden kesilip başa sarmakta veya video hızlı çekim gibi akıp erkenden döngüye girmektedir.
+
+- **Tespit Edilen Kök Nedenler:**
+  1. **Sabit 15 Kare ve 83 ms Gecikme ile ~1.24 Saniye Tavanı (`maxFrames: 15`, `frameDelayMs: 83`):**
+     - `sticker_processor.dart` (`processVideoSticker`) içerisinde yerel video çıkarıcıya `fps: 12` ve `maxFrames: 15` parametreleri gönderilmekte (`// 15 frames at 12fps = 1.25s, optimal visual smoothness and size`), ardından WebP kodlayıcıya sabit `frameDelayMs: 83` (~12 fps) iletilmektedir.
+     - Toplam animasyon süresi formülü: $\text{Süre} = 15 \times 83\text{ ms} = 1245\text{ ms} \approx 1.24\text{ saniye}$ ile sınırlandırılmıştır.
+     - WhatsApp ise animasyonlu çıkartmalarda **en fazla 3000 ms (3.0 saniye)** süreyi resmi olarak desteklemektedir. Bu durum WhatsApp'ın tanıdığı sürenin yarısından fazlasının çöpe gitmesine yol açmaktadır.
+  2. **Kare Örnekleme Aralığı ile Oynatma Hızı Uyuşmazlığı (Timeline Fast-Forward vs Truncation):**
+     - `MainActivity.kt` (`extractFrames`) tarafında:
+       `val targetIntervalUs = if (targetFrameCount > 1) durationUs / targetFrameCount else durationUs`
+       koduyla 3 saniyelik bir videodan 15 kare aralıklı olarak çekildiğinde, bu 15 kare Dart tarafında gerçek aralıkları (200 ms) yerine sabit 83 ms gecikmeyle birleştirilmektedir. Bu nedenle 3 saniyelik video 1.2 saniyede oynatılmakta ($2.5\times$ hızlı çekim) ve hareket hızla bitip başa sarmaktadır.
+     - Ayrıca Telegram `.webm` dosyalarında `MediaFormat.KEY_DURATION` eksik veya geçersiz olduğunda kod `2000000L` (2 saniye) varsayılanına düşmekte veya zaman damgası takibinde 15 kareye erken ulaşıldığında videonun kalan 1.75 saniyesi hiç decode edilmeden çıkarım işlemi sonlandırılmaktadır (early termination).
+  3. **Lottie (.tgs) Tarafındaki Süre Kısıtı:**
+     - `processLottieSticker` fonksiyonunda da benzer şekilde `frameCount = 14` ve `frameDelayMs = 83` atanmış; toplam oynatma süresi $14 \times 83\text{ ms} = 1162\text{ ms}$ (1.16 saniye) ile sınırlı kalmıştır.
+
+- **İleride Yapılacak Çözüm Planı (Action Plan):**
+  - [ ] **Dinamik Kare Gecikmesi Hesaplama (`frameDelayMs = totalDurationMs / frameCount`):** Sabit 83 ms yerine, videonun gerçek uzunluğu tespit edilerek kare gecikmesi dinamik atanmalı; böylece animasyon orijinal hızında (1.0x) akmalıdır.
+  - [ ] **Kare Sayısını ve Süreyi Artırma (20-24 Kare / 2.5 - 3.0 Saniye):** WhatsApp'ın 3000 ms sınırını tam kullanmak üzere kare sayısı 20 ila 24 aralığına yükseltilmeli (örn. 20 kare x 150 ms = 3000 ms veya 24 kare x 125 ms = 3000 ms).
+  - [ ] **Dosya Boyutu Güvenliğini Korumak (<= 480 KB Ceiling):** Kare sayısı 15'ten 20-24'e çıktığında dosya boyutunun 480 KB tavanını aşmaması için mevcut çok aşamalı sıkıştırma (70 -> 55 -> 40 -> 25) ve dinamik seyreltme (downsampling) stratejileri süre korumalı olarak güncellenmelidir.
+  - [ ] **Güvenilir Video Süresi Tespiti:** `MediaExtractor`ın süre veremediği WebM dosyalarında `MediaMetadataRetriever` (veya dosya başlığı / VP9 stream) ile gerçek videonun süresi milisaniye cinsinden doğru okunmalıdır.
+
+---
 ---
 
 ## 🇬🇧 English (Developer Summary)
@@ -134,3 +164,30 @@
 - **Future Action Plan:**
   - Implement 3-pass retry with exponential backoff (1s, 2s, 4s) in `telegram_service.dart`.
   - Preserve valid downloaded files across socket interruptions to avoid re-downloading existing stickers.
+
+---
+
+### 4. Animated / Video Stickers Truncated to ~1 Second / Premature Animation Looping
+- **Priority:** 🟡 **MEDIUM / HIGH (Item 4 - UX & Animation Fidelity)**
+- **Status:** 🔍 **INVESTIGATED & ROOT CAUSE IDENTIFIED (Action Plan Ready)**
+- **Issue Description:**
+  - Forum user ("Vanilla") reported:
+    > *"In addition, there is one more problem, I think it only saves the first 1 second of animated stickers. For example, there is a dancing cat in the pack, it is about to dance for instance, but as if its duration was trimmed, it constantly repeats the same movement, this is the case for all animated stickers."*
+  - Screenshot: [`assets/screenshots/forum_animated_duration_issue.png`](file:///Users/kompetankedi/Documents/GitHub/stickerswap/assets/screenshots/forum_animated_duration_issue.png)
+  - Rich 2.5s to 3.0s Telegram animated stickers (WebM and TGS) loop prematurely around the ~1.2s mark, cutting off movements (such as dance routines) mid-action or playing at fast-forward speed.
+
+- **Root Causes:**
+  1. **Hardcoded 15 Frames & 83ms Delay Cap (`maxFrames: 15`, `frameDelayMs: 83`):**
+     - In `sticker_processor.dart` (`processVideoSticker`), frame extraction is capped at `maxFrames: 15` and `fps: 12` (`// 15 frames at 12fps = 1.25s`), and encoded with fixed `frameDelayMs: 83` (~12 fps).
+     - Resulting animation duration is hardcoded to $15 \times 83\text{ ms} = 1245\text{ ms} \approx 1.24\text{ seconds}$, ignoring the official WhatsApp 3000 ms (3.0s) maximum limit.
+  2. **Sample Interval vs. Playback Rate Mismatch:**
+     - When `MainActivity.kt` extracts 15 frames spanning a 3-second video (`targetIntervalUs = 200,000`), playing them back at 83ms causes a $2.5\times$ fast-forward effect.
+     - Conversely, if `MediaFormat.KEY_DURATION` is missing from the WebM header or sequential extraction reaches 15 frames at 12 fps, extraction terminates early at 1.25s, entirely discarding the remaining 1.75s of the video.
+  3. **Lottie Animation Duration:**
+     - `processLottieSticker` similarly uses `frameCount = 14` with `frameDelayMs = 83` ($14 \times 83\text{ ms} = 1.16\text{ seconds}$).
+
+- **Future Action Plan:**
+  - [ ] **Dynamic Frame Delay Calculation (`frameDelayMs = totalDurationMs / frameCount`):** Compute frame delay from actual sticker duration rather than hardcoding 83ms, preserving natural 1.0x playback speed.
+  - [ ] **Scale Frame Budget to 20-24 Frames (Full 2.5s - 3.0s Support):** Expand frame count to 20-24 frames (e.g. 20 frames x 150ms = 3000ms or 24 frames x 125ms = 3000ms) to utilize the full 3.0-second WhatsApp window.
+  - [ ] **Preserve File Size Ceiling ($\le 480\text{ KB}$):** Ensure higher frame counts remain strictly under the 500 KB limit through multi-pass quality reduction (70->55->40->25) and adaptive downsampling.
+  - [ ] **Robust Duration Extraction:** Use `MediaMetadataRetriever` to reliably detect duration on Telegram WebM files lacking `KEY_DURATION` in `MediaExtractor`.
