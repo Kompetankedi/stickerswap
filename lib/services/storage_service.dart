@@ -3,6 +3,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/saved_pack.dart';
+import 'whatsapp_service.dart';
 
 /// Manages local persistent storage using SharedPreferences and file system.
 /// Stores bot token, publisher name, saved sticker packs, recent packs, and cache.
@@ -137,6 +138,28 @@ class StorageService {
       _keySavedPacks,
       packs.map((p) => p.toJsonString()).toList(),
     );
+  }
+
+  /// Updates the display name of a saved pack after applying WhatsApp sanitization.
+  /// Returns the updated [SavedPack], or `null` if [identifier] is not found.
+  Future<SavedPack?> updatePackName(String identifier, String newName) async {
+    final packs = getSavedPacks();
+    final index = packs.indexWhere((p) => p.identifier == identifier);
+    if (index == -1) return null;
+
+    final existing = packs[index];
+    final safeName = WhatsAppService.buildPackName(
+      customName: newName,
+      defaultTitle: existing.name,
+    );
+    final updated = existing.copyWith(name: safeName);
+    packs[index] = updated;
+
+    await _prefs.setStringList(
+      _keySavedPacks,
+      packs.map((p) => p.toJsonString()).toList(),
+    );
+    return updated;
   }
 
   // ─── Cache Management ────────────────────────────────────

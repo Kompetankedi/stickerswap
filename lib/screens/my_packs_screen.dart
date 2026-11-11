@@ -10,6 +10,7 @@ import '../services/whatsapp_service.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/installed_pack_cache_dialog.dart';
+import '../widgets/pack_metadata_dialog.dart';
 import '../widgets/status_badge.dart';
 
 /// "My Packs" screen – lists locally saved sticker packs with storage info,
@@ -53,12 +54,16 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
   Future<void> _loadPacks() async {
     await _storageService.init();
     final packs = _storageService.getSavedPacks();
-    final cacheBytes = await _storageService.getCacheSizeBytes();
     if (mounted) {
       setState(() {
         _packs = packs;
-        _cacheBytes = cacheBytes;
         _loaded = true;
+      });
+    }
+    final cacheBytes = await _storageService.getCacheSizeBytes();
+    if (mounted) {
+      setState(() {
+        _cacheBytes = cacheBytes;
       });
     }
   }
@@ -75,7 +80,10 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
     return storedPath;
   }
 
-  Future<void> _reAddToWhatsApp(SavedPack pack) async {
+  Future<void> _reAddToWhatsApp(
+    SavedPack pack, {
+    bool isNameUpdated = false,
+  }) async {
     try {
       HapticFeedback.lightImpact();
       final resolvedPaths = pack.stickerPaths.map(_resolveStickerPath).toList();
@@ -91,6 +99,8 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
         baseIdentifier: pack.identifier,
         whatsappService: _whatsappService,
         isAnimated: pack.isAnimated,
+        checkIfInstalled: true,
+        isNameUpdated: isNameUpdated || pack.addedToWhatsApp,
       );
       if (targetIdentifier == null || !mounted) return;
 
@@ -172,6 +182,45 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _renamePack(SavedPack pack) async {
+    HapticFeedback.selectionClick();
+    final result = await showPackMetadataDialog(
+      context: context,
+      title: 'Paket Adını Düzenle',
+      defaultTitle: pack.name,
+      initialPackName: pack.name,
+      showPublisherField: false,
+      showExportImmediatelyAction: true,
+      blankFallbackNote:
+          'Boş bırakılırsa mevcut paket adı (${pack.name}) korunur.',
+    );
+    if (result == null || !mounted) return;
+
+    final updated = await _storageService.updatePackName(
+      pack.identifier,
+      result.packName,
+    );
+    if (updated == null || !mounted) return;
+
+    await _loadPacks();
+    if (!mounted) return;
+
+    if (result.exportImmediately) {
+      await _reAddToWhatsApp(updated, isNameUpdated: true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Paket adı "${updated.name}" olarak güncellendi.'),
+          backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
     }
   }
 
@@ -507,6 +556,7 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
                         return _PackCard(
                               pack: pack,
                               onReAdd: () => _reAddToWhatsApp(pack),
+                              onEditName: () => _renamePack(pack),
                               onDelete: () => _deletePack(pack),
                               onStickerTap: _showStickerPreviewModal,
                             )
@@ -580,12 +630,14 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
 class _PackCard extends StatelessWidget {
   final SavedPack pack;
   final VoidCallback onReAdd;
+  final VoidCallback onEditName;
   final VoidCallback onDelete;
   final void Function(String path, String emoji) onStickerTap;
 
   const _PackCard({
     required this.pack,
     required this.onReAdd,
+    required this.onEditName,
     required this.onDelete,
     required this.onStickerTap,
   });
@@ -635,8 +687,8 @@ class _PackCard extends StatelessWidget {
                   children: [
                     Text(
                       pack.name,
-                      style: const TextStyle(
-                        color: AppTheme.textPrimary,
+                      style: TextStyle(
+                        color: AppTheme.getText(context),
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
@@ -748,21 +800,48 @@ class _PackCard extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              GestureDetector(
-                onTap: onDelete,
-                child: Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: AppTheme.error.withAlpha(20),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.error.withAlpha(50)),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Paket Adını Düzenle',
+                child: InkWell(
+                  onTap: onEditName,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withAlpha(20),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppTheme.primaryBlue.withAlpha(70),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.edit_rounded,
+                      color: AppTheme.primaryBlue,
+                      size: 20,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.delete_outline_rounded,
-                    color: AppTheme.error,
-                    size: 20,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Paketi Sil',
+                child: GestureDetector(
+                  onTap: onDelete,
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: AppTheme.error.withAlpha(20),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.error.withAlpha(50)),
+                    ),
+                    child: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: AppTheme.error,
+                      size: 20,
+                    ),
                   ),
                 ),
               ),

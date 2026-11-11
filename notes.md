@@ -161,6 +161,35 @@
   - [x] Fiziksel Android cihaz üzerinde (`adb` kablosuz hata ayıklama `100.107.62.92:5555`) release APK ile WhatsApp aktarımı, `logcat`, `StickerContentProvider` `_wa_v4.webp` RIFF/ANMF süre/kare incelemesi ve `Paketlerim` `WebpInspector` çıktısı doğrulandı.
 
 ---
+
+### 6. WhatsApp Çıkartma Paketi Adının (`sticker_pack_name`) Özelleştirilebilmesi
+- **Öncelik:** 🟡 **ORTA (6. Öncelik - Kullanıcı Özelleştirme & Özellik Talebi)**
+- **Durum:** ✅ **TAMAMLANDI & FİZİKSEL CİHAZDA TEST EDİLDİ**
+- **İstek / Sorun Tanımı:**
+  - Mevcut uygulamada kullanıcılar **Ayarlar → WhatsApp Yayıncı Adı** bölümünden WhatsApp çıkartma paketi ekranının alt kısmında yer alan **yayıncı/yazar adını** (`publisher` / `sticker_pack_publisher`) değiştirebilmektedir.
+  - Ancak WhatsApp çıkartma paketi ekranının en üst başlığında görünen **çıkartma paket adını** (`name` / `sticker_pack_name` — örn. `"Karimm - fStikBot"`) kullanıcı tarafından düzenleme imkânı henüz bulunmamaktaydı.
+  - Kullanıcılar Telegram'dan gelen varsayılan paket başlığı (`widget.stickerSet.title`) yerine kendi istedikleri özel paket adını belirleyerek WhatsApp'a aktarabilmek (ve kayıtlı paketlerde de düzenleyebilmek) istemektedir.
+
+- **Mevcut Durum & Uygulanan Çözüm:**
+  1. **Aktarım Öncesi Paket Adı & Yayıncı Düzenleme UI (`PackPreviewScreen` & `PackMetadataDialog`):**
+     - `lib/widgets/pack_metadata_dialog.dart` eklendi; canlı WhatsApp temizleme ön izlemesi (`120` karakter sayacı, çok parçalı `Part 1..N` uyarısı, boş/geçersiz sembol fallback uyarısı, "Varsayılana Dön" sıfırlaması) ve aktarıma özel yayıncı adı (`_customPublisher`) alanı sunuldu.
+     - `lib/screens/pack_preview_screen.dart` üzerinde üst başlık düzenleme ikonu (`_effectiveDisplayTitle`) ve `"WhatsApp'a Aktar"` düğmesinin hemen üzerinde canlı `Paket Adı` / `Yayıncı` özet kartı eklendi.
+  2. **Sanitizasyon & Çok Parçalı İsimlendirme (`WhatsAppService`):**
+     - `lib/services/whatsapp_service.dart` içine `WhatsAppService.buildPackName` eklendi: özel paket adını `sanitizeForWhatsApp` kurallarından (Türkçe karakter dönüştürme, desteklenmeyen karakter temizliği, `..` engeli, `120` karakter tavanı) geçirir; boş veya yalnızca desteklenmeyen sembollerden oluşan girişlerde `defaultTitle`'a geri döner; 30+ çıkartmalık çok parçalı paketlerde taban adı kısaltarak `Part 1`, `Part 2` vb. son eklerin `120` karakter sınırında kesilmesini önler.
+  3. **Uçtan Uca Aktarım, Yerel Kayıt & `Paketlerim` Yeniden Adlandırma:**
+     - Belirlenen özel ad ve yayıncı `_PreparedPackPart`, `SavedPack` (`copyWith`) ve `WhatsAppService.addStickerPack` üzerinden Android `Intent` (`EXTRA_STICKER_PACK_NAME`) ve `StickerContentProvider` (`sticker_pack_name`) katmanlarına aktarılır.
+     - `StorageService.updatePackName` eklendi; `lib/screens/my_packs_screen.dart` kartlarına `"Paket Adını Düzenle"` aksiyonu ve diyalogda `"Kaydet"` / `"Kaydet ve Ekle"` seçenekleri eklendi.
+     - `lib/widgets/installed_pack_cache_dialog.dart` güncellendi: statik veya hareketli bir paket WhatsApp'ta zaten yüklüyken ad değişikliğiyle tekrar gönderilirse (`checkIfInstalled`, `isNameUpdated`), WhatsApp'ın eski adı korumasını aşmak için `"Yeni Güncel Kopya Ekle"` (sürümlü identifier) veya `"Mevcuta Yaz"` seçeneği sunulur.
+
+- **Durum Takibi (Action Items):**
+  - [x] **Aktarım Öncesi Paket Adı Düzenleme UI (`PackPreviewScreen`):** Üst başlıkta düzenleme ikonu, alt kısımda paket adı/yayıncı özeti ve `showPackMetadataDialog` (aktarıma özel yayıncı düzenleme dahil) eklendi.
+  - [x] **Sanitizasyon & Çok Parçalı İsimlendirme:** `WhatsAppService.buildPackName` ile `120` karakter sınırı, boş/sembol fallback'i ve çok parçalı `Part X` son eki koruması uygulandı.
+  - [x] **Uçtan Uca Aktarım & Yerel Kayıt (`SavedPack`):** Özel paket adı ve yayıncı `_PreparedPackPart`, `SavedPack` ve `WhatsAppService.addStickerPack` akışına bağlandı.
+  - [x] **`Paketlerim` (`MyPacksScreen`) Üzerinden Yeniden Adlandırma:** `SavedPack.copyWith`, `StorageService.updatePackName`, kart üzerinde `"Paket Adını Düzenle"` butonu ve `"Kaydet ve Ekle"` akışı ile kurulu paket önbellek koruması eklendi.
+  - [x] **Birim & Widget Testleri:** `test/whatsapp_service_test.dart` ve `test/pack_customization_test.dart` eklendi; `flutter test` (`37/37` geçti) ve `flutter analyze --no-fatal-infos` temiz tamamlandı.
+  - [x] **Fiziksel Cihaz Doğrulaması:** Kullanıcı tarafından **Redmi Note 12 Pro 4G** (`crDroid 12.13` / `Android 16 QPR2`) cihazında canlı test edilerek sorunsuz doğrulandı.
+
+---
 ---
 
 ## 🇬🇧 English (Developer Summary)
@@ -285,3 +314,32 @@
   - [x] Update `StickerProcessor` (`_wa_v4.webp`), `WhatsAppMethodHandler` (`imageDataVersion`/`notifyPackChanged`), `MyPacksScreen`/`PackPreviewScreen` cache guards, and `WebpInspector`.
   - [x] Run regression tests across `test/sticker_processor_isolate_test.dart` and `test/webp_inspector_and_lottie_test.dart` (`flutter test`: 26/26 passed).
   - [x] Verify end-to-end WhatsApp export, `adb logcat`, pulled `StickerContentProvider` `_wa_v4.webp` RIFF/ANMF metrics, live WhatsApp preview sheet animation, and on-device `WebpInspector` modal readout on physical device `100.107.62.92:5555`.
+
+---
+
+### 6. Customizing the WhatsApp Sticker Pack Name (`sticker_pack_name`)
+- **Priority:** 🟡 **MEDIUM (Item 6 - User Customization & Feature Request)**
+- **Status:** ✅ **COMPLETED & VERIFIED ON PHYSICAL DEVICE**
+- **Feature Request / Problem Statement:**
+  - Currently, users can customize the **publisher / author name** shown near the bottom of the WhatsApp sticker pack preview sheet (`publisher` / `sticker_pack_publisher`) via **Settings → WhatsApp Yayıncı Adı**.
+  - Previously, the **sticker pack display name** shown in the top header of the WhatsApp sticker pack sheet (`name` / `sticker_pack_name`, e.g., `"Karimm - fStikBot"`) could not be edited by the user.
+  - Users want to define a custom sticker pack name instead of always using Telegram's `widget.stickerSet.title` when exporting to WhatsApp (and also rename locally saved packs).
+
+- **Implemented Solution & Technical Details:**
+  1. **Pre-Export Pack Name & Publisher Editor UI (`PackPreviewScreen` & `PackMetadataDialog`):**
+     - Added `lib/widgets/pack_metadata_dialog.dart` (`showPackMetadataDialog`) with live WhatsApp sanitization preview, `120`-character counter, multi-part (`Part 1..N`) preview, blank/symbol-only fallback notices, reset-to-default actions, and an optional per-export publisher override.
+     - Updated `lib/screens/pack_preview_screen.dart` with an editable AppBar title button and a tappable summary card above `"WhatsApp'a Aktar"` showing the live sanitized pack name and publisher.
+  2. **Sanitization & Multi-Part Naming (`WhatsAppService`):**
+     - Added `WhatsAppService.buildPackName` in `lib/services/whatsapp_service.dart` to pass custom names through `sanitizeForWhatsApp` (Turkish transliteration, symbol stripping, `..` removal, `120`-char cap), fall back to `defaultTitle` when blank or stripped to empty, and cap the base name so `Part 1` / `Part 2` suffixes are never truncated on 30+ sticker exports.
+  3. **End-to-End Propagation, Persistence & `My Packs` Rename Support:**
+     - Propagated custom pack name and per-export publisher through `_PreparedPackPart`, `SavedPack` (`copyWith`), and `WhatsAppService.addStickerPack` to Android's `EXTRA_STICKER_PACK_NAME` and `StickerContentProvider`.
+     - Added `StorageService.updatePackName` and an `"Edit Pack Name"` (`Paket Adını Düzenle`) action button on `MyPacksScreen` cards with `"Save"` and `"Save & Add"` actions.
+     - Updated `lib/widgets/installed_pack_cache_dialog.dart` (`checkIfInstalled`, `isNameUpdated`) so re-exporting a renamed pack (static or animated) that is already installed in WhatsApp prompts to either mint a fresh versioned identifier (`"Yeni Güncel Kopya Ekle"`) or overwrite existing metadata.
+
+- **Action Items:**
+  - [x] **Pre-Export Pack Name Editor UI (`PackPreviewScreen`):** Added editable title row, bottom summary chip, and `showPackMetadataDialog` (including per-export publisher override).
+  - [x] **Sanitization & Multi-Part Naming:** Added `WhatsAppService.buildPackName` enforcing `120`-char cap, Turkish/symbol sanitization, blank/invalid fallback, and `Part X` suffix preservation.
+  - [x] **End-to-End Propagation & Persistence (`SavedPack`):** Connected custom name & publisher across `_PreparedPackPart`, `SavedPack`, and `WhatsAppService.addStickerPack`.
+  - [x] **Rename Support in `My Packs` (`MyPacksScreen`):** Added `SavedPack.copyWith`, `StorageService.updatePackName`, card edit button, `"Save & Add"` flow, and installed-pack identifier prompt.
+  - [x] **Unit & Widget Tests:** Added tests in `test/whatsapp_service_test.dart` and `test/pack_customization_test.dart` (`flutter test`: `37/37` passed; `flutter analyze --no-fatal-infos` clean).
+  - [x] **On-Device Verification:** Tested live by user on **Redmi Note 12 Pro 4G** (`crDroid 12.13` / `Android 16 QPR2`) and confirmed working smoothly.

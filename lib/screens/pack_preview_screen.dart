@@ -13,6 +13,7 @@ import '../services/whatsapp_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/installed_pack_cache_dialog.dart';
+import '../widgets/pack_metadata_dialog.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/animated_sticker_player.dart';
 
@@ -52,6 +53,11 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
   bool _isSearchOpen = false;
   final _searchController = TextEditingController();
 
+  // Custom WhatsApp export metadata overrides
+  String? _customPackName;
+  String? _customPublisher;
+  String _defaultPublisher = 'StickerSwap';
+
   @override
   void initState() {
     super.initState();
@@ -67,7 +73,87 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
     if (widget.stickerSet.stickers.isNotEmpty) {
       _activePreviewSticker = widget.stickerSet.stickers.first;
     }
+    if (mounted) {
+      setState(() {
+        _defaultPublisher = _storageService.getPublisherName();
+      });
+    }
     _loadThumbnails();
+  }
+
+  bool get _hasCustomName {
+    final custom = _customPackName?.trim();
+    if (custom == null || custom.isEmpty) return false;
+    return custom != widget.stickerSet.title.trim();
+  }
+
+  bool get _hasCustomPublisher {
+    final custom = _customPublisher?.trim();
+    if (custom == null || custom.isEmpty) return false;
+    return custom != _defaultPublisher.trim();
+  }
+
+  String get _effectiveDisplayTitle {
+    final custom = _customPackName?.trim();
+    if (custom != null && custom.isNotEmpty) return custom;
+    return widget.stickerSet.title;
+  }
+
+  String get _effectivePublisherRaw {
+    final custom = _customPublisher?.trim();
+    if (custom != null && custom.isNotEmpty) return custom;
+    return _defaultPublisher;
+  }
+
+  String get _effectivePublisherSanitized =>
+      WhatsAppService.sanitizeForWhatsApp(
+        _effectivePublisherRaw,
+        fallback: 'StickerSwap',
+      );
+
+  String _previewPackNameForSelection(int selectedCount) {
+    final totalParts = selectedCount > 30 ? (selectedCount / 30).ceil() : 1;
+    final part1 = WhatsAppService.buildPackName(
+      customName: _customPackName,
+      defaultTitle: widget.stickerSet.title,
+      partIndex: 0,
+      totalParts: totalParts,
+    );
+    if (totalParts > 1) {
+      return '$part1 (1/$totalParts)';
+    }
+    return part1;
+  }
+
+  Future<void> _openPackMetadataEditor() async {
+    if (_isProcessing) return;
+    final selectedCount = widget.stickerSet.selectedCount;
+    final totalParts = selectedCount > 30 ? (selectedCount / 30).ceil() : 1;
+
+    final result = await showPackMetadataDialog(
+      context: context,
+      defaultTitle: widget.stickerSet.title,
+      initialPackName: _effectiveDisplayTitle,
+      totalParts: totalParts,
+      showPublisherField: true,
+      defaultPublisher: _defaultPublisher,
+      initialPublisher: _effectivePublisherRaw,
+    );
+    if (result == null || !mounted) return;
+
+    setState(() {
+      final nextName = result.packName.trim();
+      _customPackName =
+          (nextName.isEmpty || nextName == widget.stickerSet.title.trim())
+              ? null
+              : nextName;
+
+      final nextPublisher = result.publisher?.trim() ?? '';
+      _customPublisher =
+          (nextPublisher.isEmpty || nextPublisher == _defaultPublisher.trim())
+              ? null
+              : nextPublisher;
+    });
   }
 
   @override
@@ -376,7 +462,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
     });
 
     try {
-      final publisher = _storageService.getPublisherName();
+      final publisher = _effectivePublisherSanitized;
       final outputDir = await _stickerProcessor.getPackOutputDir(
         widget.stickerSet.name,
       );
@@ -391,11 +477,11 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
         if (_isCancelled || !mounted) return;
 
         final chunk = chunks[chunkIdx];
-        final partSuffix = chunks.length > 1 ? ' Part ${chunkIdx + 1}' : '';
-        final rawPackName = '${widget.stickerSet.title}$partSuffix';
-        final packName = WhatsAppService.sanitizeForWhatsApp(
-          rawPackName,
-          fallback: 'Sticker Pack ${chunkIdx + 1}',
+        final packName = WhatsAppService.buildPackName(
+          customName: _customPackName,
+          defaultTitle: widget.stickerSet.title,
+          partIndex: chunkIdx,
+          totalParts: chunks.length,
         );
         final idPartSuffix = chunks.length > 1 ? '_part${chunkIdx + 1}' : '';
         final packId = WhatsAppService.sanitizeIdentifier(
@@ -550,6 +636,8 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
           baseIdentifier: part.packId,
           whatsappService: _whatsappService,
           isAnimated: part.isAnimated,
+          checkIfInstalled: part.isAnimated || _hasCustomName,
+          isNameUpdated: _hasCustomName,
         );
         if (targetPackId == null) {
           if (mounted) _showSnackBar('WhatsApp\'a ekleme iptal edildi.');
@@ -719,6 +807,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
           preparedParts: preparedParts,
           whatsappService: _whatsappService,
           storageService: _storageService,
+          isCustomName: _hasCustomName,
         );
       },
     );
@@ -959,15 +1048,40 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
           ),
           title: Column(
             children: [
-              Text(
-                set.title,
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.getText(context),
+              InkWell(
+                onTap: _isProcessing ? null : _openPackMetadataEditor,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _effectiveDisplayTitle,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.getText(context),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Icon(
+                        Icons.edit_rounded,
+                        size: 15,
+                        color: _hasCustomName
+                            ? AppTheme.primaryBlue
+                            : AppTheme.getTextMut(context),
+                      ),
+                    ],
+                  ),
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -1484,6 +1598,88 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                             ),
                         ],
                       ),
+                      const SizedBox(height: 10),
+                      // Custom Pack Name & Publisher chip
+                      InkWell(
+                        onTap: _openPackMetadataEditor,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? AppTheme.surfaceDarkElevated.withAlpha(140)
+                                : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: (_hasCustomName || _hasCustomPublisher)
+                                  ? AppTheme.primaryBlue.withAlpha(140)
+                                  : (isDark
+                                        ? const Color(0xFF334155)
+                                        : const Color(0xFFE2E8F0)),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.label_outline_rounded,
+                                size: 16,
+                                color: (_hasCustomName || _hasCustomPublisher)
+                                    ? AppTheme.primaryBlue
+                                    : AppTheme.getTextMut(context),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Paket Adı: ${_previewPackNameForSelection(selectedCount)}',
+                                      style: TextStyle(
+                                        color: AppTheme.getText(context),
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      'Yayıncı: $_effectivePublisherSanitized',
+                                      style: TextStyle(
+                                        color: AppTheme.getTextMut(context),
+                                        fontSize: 11,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryBlue.withAlpha(24),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text(
+                                  'Düzenle',
+                                  style: TextStyle(
+                                    color: AppTheme.primaryBlue,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 12),
                       SizedBox(
                         width: double.infinity,
@@ -1602,11 +1798,13 @@ class _MultiPartExportSheet extends StatefulWidget {
   final List<_PreparedPackPart> preparedParts;
   final WhatsAppService whatsappService;
   final StorageService storageService;
+  final bool isCustomName;
 
   const _MultiPartExportSheet({
     required this.preparedParts,
     required this.whatsappService,
     required this.storageService,
+    this.isCustomName = false,
   });
 
   @override
@@ -1643,6 +1841,8 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
         baseIdentifier: part.packId,
         whatsappService: widget.whatsappService,
         isAnimated: part.isAnimated,
+        checkIfInstalled: part.isAnimated || widget.isCustomName,
+        isNameUpdated: widget.isCustomName,
       );
       if (targetPackId == null) {
         part.isCancelled = true;

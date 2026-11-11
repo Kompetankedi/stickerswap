@@ -26,6 +26,33 @@ class SavedPack {
     this.addedToWhatsApp = false,
   });
 
+  /// Returns a copy of this pack with any specified metadata fields updated.
+  SavedPack copyWith({
+    String? identifier,
+    String? name,
+    String? publisher,
+    String? trayImagePath,
+    List<String>? stickerPaths,
+    List<String>? emojis,
+    int? stickerCount,
+    DateTime? savedAt,
+    bool? isAnimated,
+    bool? addedToWhatsApp,
+  }) {
+    return SavedPack(
+      identifier: identifier ?? this.identifier,
+      name: name ?? this.name,
+      publisher: publisher ?? this.publisher,
+      trayImagePath: trayImagePath ?? this.trayImagePath,
+      stickerPaths: stickerPaths ?? List<String>.from(this.stickerPaths),
+      emojis: emojis ?? List<String>.from(this.emojis),
+      stickerCount: stickerCount ?? this.stickerCount,
+      savedAt: savedAt ?? this.savedAt,
+      isAnimated: isAnimated ?? this.isAnimated,
+      addedToWhatsApp: addedToWhatsApp ?? this.addedToWhatsApp,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         'identifier': identifier,
         'name': name,

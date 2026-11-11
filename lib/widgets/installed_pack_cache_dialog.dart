@@ -2,28 +2,49 @@ import 'package:flutter/material.dart';
 import '../services/whatsapp_service.dart';
 import '../theme/app_theme.dart';
 
-/// Prompts the user when an animated pack is already installed in WhatsApp so they
-/// can mint a fresh identifier to bypass WhatsApp's client-side sticker cache.
+/// Prompts the user when a pack is already installed in WhatsApp so they
+/// can mint a fresh identifier to bypass WhatsApp's client-side metadata/sticker cache.
 /// Returns `null` if cancelled.
 Future<String?> resolveAnimatedPackExportIdentifier({
   required BuildContext context,
   required String baseIdentifier,
   required WhatsAppService whatsappService,
   required bool isAnimated,
+  bool checkIfInstalled = false,
+  bool isNameUpdated = false,
 }) async {
-  if (!isAnimated) return baseIdentifier;
+  if (!isAnimated && !checkIfInstalled) return baseIdentifier;
   final installed = await whatsappService.isPackInstalled(baseIdentifier);
   if (!installed || !context.mounted) return baseIdentifier;
+
+  final String message;
+  if (isNameUpdated && !isAnimated) {
+    message =
+        'Bu paket WhatsApp\'ta zaten yüklü olduğu için WhatsApp eski paket adını koruyabilir.\n\n'
+        'Güncel paket adının WhatsApp\'ta hemen görünmesi için "Yeni Güncel Kopya Ekle"yi seçebilir '
+        'ya da önce WhatsApp içinden eski paketi silip yeniden ekleyebilirsiniz.';
+  } else if (isNameUpdated && isAnimated) {
+    message =
+        'WhatsApp daha önce eklenen paketlerin eski adını ve (1 sn) önbelleğini koruyabilir.\n\n'
+        'Güncel adın ve animasyonun görünmesi için "Yeni Güncel Kopya Ekle"yi seçebilir '
+        'ya da önce WhatsApp içinden eski paketi silip yeniden ekleyebilirsiniz.';
+  } else if (!isAnimated) {
+    message =
+        'Bu paket WhatsApp\'ta zaten yüklü.\n\n'
+        'Yeni bir kopya olarak eklemek için "Yeni Güncel Kopya Ekle"yi seçebilir '
+        'ya da önce WhatsApp içinden eski paketi silip yeniden ekleyebilirsiniz.';
+  } else {
+    message =
+        'WhatsApp daha önce eklenen paketlerin eski (1 sn) önbelleğini koruyabilir.\n\n'
+        'Güncel animasyonun görünmesi için "Yeni Güncel Kopya Ekle"yi seçebilir '
+        'ya da önce WhatsApp içinden eski paketi silip yeniden ekleyebilirsiniz.';
+  }
 
   return showDialog<String>(
     context: context,
     builder: (dialogContext) => AlertDialog(
       title: const Text('Paket WhatsApp\'ta Zaten Yüklü'),
-      content: const Text(
-        'WhatsApp daha önce eklenen paketlerin eski (1 sn) önbelleğini koruyabilir.\n\n'
-        'Güncel animasyonun görünmesi için "Yeni Güncel Kopya Ekle"yi seçebilir '
-        'ya da önce WhatsApp içinden eski paketi silip yeniden ekleyebilirsiniz.',
-      ),
+      content: Text(message),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(null),

@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:characters/characters.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
@@ -29,10 +28,7 @@ class WhatsAppExportResult {
 class WhatsAppService {
   static const MethodChannel _channel = MethodChannel('com.example.stickerswap/whatsapp');
 
-  /// Sanitizes text to strictly match Android WhatsApp Stickers Validator:
-  /// Pattern: [\\w-.,'\\s]+ (ASCII word chars, dash, dot, comma, apostrophe, space)
-  /// Length: 1 - 128 characters, and must NOT contain double dots '..'
-  static String sanitizeForWhatsApp(String input, {String fallback = 'Stickers'}) {
+  static String _sanitizeCore(String input) {
     const trMap = {
       'ç': 'c', 'Ç': 'C',
       'ğ': 'g', 'Ğ': 'G',
@@ -57,11 +53,57 @@ class WhatsAppService {
     }
 
     // Collapse whitespace
-    result = result.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return result.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  /// Sanitizes text to strictly match Android WhatsApp Stickers Validator:
+  /// Pattern: [\\w-.,'\\s]+ (ASCII word chars, dash, dot, comma, apostrophe, space)
+  /// Length: 1 - 128 characters, and must NOT contain double dots '..'
+  static String sanitizeForWhatsApp(String input, {String fallback = 'Stickers'}) {
+    var result = _sanitizeCore(input);
 
     if (result.isEmpty) result = fallback;
     if (result.length > 120) result = result.substring(0, 120).trim();
     return result;
+  }
+
+  /// Builds a WhatsApp-compliant sticker pack name from an optional [customName]
+  /// and [defaultTitle], preserving `Part X` suffixes within the 120-character cap.
+  static String buildPackName({
+    String? customName,
+    required String defaultTitle,
+    int partIndex = 0,
+    int totalParts = 1,
+  }) {
+    final safeTotalParts = totalParts < 1 ? 1 : totalParts;
+    final safePartIndex = partIndex < 0 ? 0 : partIndex;
+    final partSuffix =
+        safeTotalParts > 1 ? ' Part ${safePartIndex + 1}' : '';
+    final fallbackName = safeTotalParts > 1
+        ? 'Sticker Pack ${safePartIndex + 1}'
+        : 'Sticker Pack';
+
+    var sanitizedBase = customName != null ? _sanitizeCore(customName) : '';
+    if (sanitizedBase.isEmpty) {
+      sanitizedBase = _sanitizeCore(defaultTitle);
+    }
+    if (sanitizedBase.isEmpty) {
+      return sanitizeForWhatsApp(fallbackName, fallback: 'Sticker Pack');
+    }
+
+    if (partSuffix.isEmpty) {
+      return sanitizeForWhatsApp(sanitizedBase, fallback: fallbackName);
+    }
+
+    final maxBaseLength = (120 - partSuffix.length).clamp(1, 120);
+    final trimmedBase = sanitizedBase.length > maxBaseLength
+        ? sanitizedBase.substring(0, maxBaseLength).trimRight()
+        : sanitizedBase;
+    if (trimmedBase.isEmpty) {
+      return sanitizeForWhatsApp(fallbackName, fallback: 'Sticker Pack');
+    }
+
+    return sanitizeForWhatsApp('$trimmedBase$partSuffix', fallback: fallbackName);
   }
 
   /// Sanitizes pack identifier to safe ASCII word/hyphen characters only.
