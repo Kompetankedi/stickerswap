@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:stickerswap/services/sticker_processor.dart';
@@ -124,8 +124,10 @@ void main() {
     expect(decoded.height, 512);
     expect(decoded.numFrames, greaterThanOrEqualTo(10));
     expect(decoded.frameDuration, greaterThanOrEqualTo(8));
-    // Total animation duration should not exceed WhatsApp 3000 ms limit
-    expect(decoded.numFrames * decoded.frameDuration, lessThanOrEqualTo(3000));
+    expect(decoded.loopCount, 0);
+    final totalDuration =
+        decoded.frames.fold<int>(0, (sum, f) => sum + f.frameDuration);
+    expect(totalDuration, inInclusiveRange(2800, 3000));
   });
 
   test('createAnimatedWebpFromPngFramesSyncForTest preserves duration and enforces <= 460KB on heavy frames', () async {
@@ -149,7 +151,7 @@ void main() {
       frames.add(img.encodePng(frame));
     }
 
-    final outPath = '${tempDir.path}/test_heavy_frames_wa_v2.webp';
+    final outPath = '${tempDir.path}/test_heavy_frames_wa_v3.webp';
     final resultPath = StickerProcessor.createAnimatedWebpFromPngFramesSyncForTest(
       pngFrames: frames,
       outputPath: outPath,
@@ -166,9 +168,128 @@ void main() {
     expect(decoded, isNotNull);
     expect(decoded!.width, 512);
     expect(decoded.height, 512);
-    expect(decoded.numFrames, greaterThanOrEqualTo(2));
+    expect(decoded.numFrames, greaterThanOrEqualTo(6));
     expect(decoded.frameDuration, greaterThanOrEqualTo(8));
-    expect(decoded.numFrames * decoded.frameDuration, lessThanOrEqualTo(3000));
+    expect(decoded.loopCount, 0);
+    final totalDuration =
+        decoded.frames.fold<int>(0, (sum, f) => sum + f.frameDuration);
+    expect(totalDuration, inInclusiveRange(2500, 3000));
+  });
+
+  test('extreme size ceiling fallback still preserves full animation duration instead of collapsing to 1s', () async {
+    final frames = <Uint8List>[];
+    for (int i = 0; i < 22; i++) {
+      final frame = img.Image(width: 320, height: 320, numChannels: 4);
+      img.fillRect(
+        frame,
+        x1: 20,
+        y1: 20,
+        x2: 300,
+        y2: 300,
+        color: img.ColorUint8.rgba((i * 23) % 255, (i * 47) % 255, 190, 255),
+      );
+      img.fillCircle(
+        frame,
+        x: 60 + (i * 9),
+        y: 160,
+        radius: 36,
+        color: img.ColorUint8.rgba(255, 240, 40, 255),
+      );
+      frames.add(img.encodePng(frame));
+    }
+
+    final outPath = '${tempDir.path}/test_tight_budget_wa_v3.webp';
+    final resultPath = StickerProcessor.createAnimatedWebpFromPngFramesSyncForTest(
+      pngFrames: frames,
+      outputPath: outPath,
+      frameDelayMs: 127,
+      maxKb: 35,
+      totalDurationMs: 2800,
+    );
+
+    final bytes = await File(resultPath).readAsBytes();
+    expect(bytes.length, lessThanOrEqualTo(35 * 1024));
+
+    final decoded = img.decodeWebP(bytes);
+    expect(decoded, isNotNull);
+    expect(decoded!.numFrames, greaterThanOrEqualTo(2));
+    expect(decoded.loopCount, 0);
+    final totalDuration =
+        decoded.frames.fold<int>(0, (sum, f) => sum + f.frameDuration);
+    expect(totalDuration, inInclusiveRange(2600, 3000));
+  });
+
+  test('single-frame input duplicates to 2 frames while preserving requested duration', () async {
+    final frame = img.Image(width: 256, height: 256, numChannels: 4);
+    img.fill(frame, color: img.ColorUint8.rgba(90, 200, 140, 255));
+    final png = img.encodePng(frame);
+
+    final outPath = '${tempDir.path}/test_single_frame_wa_v3.webp';
+    final resultPath = StickerProcessor.createAnimatedWebpFromPngFramesSyncForTest(
+      pngFrames: [png],
+      outputPath: outPath,
+      frameDelayMs: 125,
+      totalDurationMs: 2500,
+    );
+
+    final bytes = await File(resultPath).readAsBytes();
+    final decoded = img.decodeWebP(bytes);
+    expect(decoded, isNotNull);
+    expect(decoded!.numFrames, 2);
+    expect(decoded.loopCount, 0);
+    final totalDuration =
+        decoded.frames.fold<int>(0, (sum, f) => sum + f.frameDuration);
+    expect(totalDuration, 2500);
+  });
+
+  test('processVideoSticker migrates legacy caches to _wa_v4.webp and preserves sparse >250ms delays', () async {
+    const channel = MethodChannel('com.example.stickerswap/video');
+    final inputVideo = File('${tempDir.path}/sample.webm')..writeAsBytesSync([0, 1, 2]);
+    final legacyV1 = File('${tempDir.path}/sample_wa.webp')..writeAsBytesSync([1, 2, 3]);
+    final legacyV2 = File('${tempDir.path}/sample_wa_v2.webp')..writeAsBytesSync([4, 5, 6]);
+    final legacyV3 = File('${tempDir.path}/sample_wa_v3.webp')..writeAsBytesSync([7, 8, 9]);
+
+    final sparseFrames = <Uint8List>[];
+    for (int i = 0; i < 4; i++) {
+      final f = img.Image(width: 200, height: 200, numChannels: 4);
+      img.fill(f, color: img.ColorUint8.rgba(i * 60, 120, 220, 255));
+      sparseFrames.add(Uint8List.fromList(img.encodePng(f)));
+    }
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'extractFrames') {
+        return {
+          'frames': sparseFrames,
+          'durationMs': 2800,
+          'frameDelayMs': 700,
+        };
+      }
+      return null;
+    });
+
+    try {
+      final outPath = await processor.processVideoSticker(
+        inputVideo.path,
+        tempDir.path,
+      );
+      expect(outPath.endsWith('sample_wa_v4.webp'), isTrue);
+      expect(await File(outPath).exists(), isTrue);
+      expect(await legacyV1.exists(), isFalse);
+      expect(await legacyV2.exists(), isFalse);
+      expect(await legacyV3.exists(), isFalse);
+
+      final decoded = img.decodeWebP(await File(outPath).readAsBytes());
+      expect(decoded, isNotNull);
+      expect(decoded!.numFrames, 4);
+      expect(decoded.frameDuration, 700);
+      final totalDuration =
+          decoded.frames.fold<int>(0, (sum, f) => sum + f.frameDuration);
+      expect(totalDuration, 2800);
+    } finally {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    }
   });
 }
 

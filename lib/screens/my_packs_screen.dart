@@ -5,9 +5,11 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../theme/app_theme.dart';
 import '../models/saved_pack.dart';
 import '../services/storage_service.dart';
+import '../services/webp_inspector.dart';
 import '../services/whatsapp_service.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_button.dart';
+import '../widgets/installed_pack_cache_dialog.dart';
 import '../widgets/status_badge.dart';
 
 /// "My Packs" screen – lists locally saved sticker packs with storage info,
@@ -61,20 +63,48 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
     }
   }
 
+  String _resolveStickerPath(String storedPath) {
+    if (File(storedPath).existsSync()) return storedPath;
+    for (final legacySuffix in const ['_wa_v3.webp', '_wa_v2.webp', '_wa.webp']) {
+      if (storedPath.endsWith(legacySuffix)) {
+        final upgraded =
+            '${storedPath.substring(0, storedPath.length - legacySuffix.length)}_wa_v4.webp';
+        if (File(upgraded).existsSync()) return upgraded;
+      }
+    }
+    return storedPath;
+  }
+
   Future<void> _reAddToWhatsApp(SavedPack pack) async {
     try {
       HapticFeedback.lightImpact();
+      final resolvedPaths = pack.stickerPaths.map(_resolveStickerPath).toList();
+      final hasLegacyFiles =
+          pack.isAnimated && resolvedPaths.any((p) => !p.endsWith('_wa_v4.webp'));
+      if (hasLegacyFiles && mounted) {
+        final shouldContinue = await confirmLegacyAnimatedPackReAdd(context);
+        if (!shouldContinue || !mounted) return;
+      }
+
+      final targetIdentifier = await resolveAnimatedPackExportIdentifier(
+        context: context,
+        baseIdentifier: pack.identifier,
+        whatsappService: _whatsappService,
+        isAnimated: pack.isAnimated,
+      );
+      if (targetIdentifier == null || !mounted) return;
+
       final stickerData = <Map<String, dynamic>>[];
-      for (int i = 0; i < pack.stickerPaths.length; i++) {
+      for (int i = 0; i < resolvedPaths.length; i++) {
         final rawEmoji = i < pack.emojis.length ? pack.emojis[i] : '⭐';
         stickerData.add({
-          'path': pack.stickerPaths[i],
+          'path': resolvedPaths[i],
           'emojis': WhatsAppService.sanitizeEmojis(rawEmoji),
         });
       }
 
       final result = await _whatsappService.addStickerPack(
-        identifier: pack.identifier,
+        identifier: targetIdentifier,
         name: pack.name,
         publisher: pack.publisher,
         trayPath: pack.trayImagePath,
@@ -184,7 +214,11 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
 
   void _showStickerPreviewModal(String imagePath, String emoji) {
     HapticFeedback.lightImpact();
-    final file = File(imagePath);
+    final resolvedPath = _resolveStickerPath(imagePath);
+    final file = File(resolvedPath);
+    final isLegacyAnimatedFile = resolvedPath.endsWith('_wa_v3.webp') ||
+        resolvedPath.endsWith('_wa_v2.webp') ||
+        resolvedPath.endsWith('_wa.webp');
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -245,6 +279,48 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
+              ),
+              const SizedBox(height: 8),
+              FutureBuilder<WebpAnimationMetadata?>(
+                future: WebpInspector.inspectFile(resolvedPath),
+                builder: (context, snapshot) {
+                  final meta = snapshot.data;
+                  if (meta == null) return const SizedBox.shrink();
+                  final summary = meta.isAnimated
+                      ? '${meta.width}×${meta.height} · ${meta.frameCount} kare · '
+                          '${meta.durationSeconds.toStringAsFixed(2)} sn · '
+                          '${meta.fileSizeKb.toStringAsFixed(1)} KB'
+                      : '${meta.width}×${meta.height} · Statik WebP · '
+                          '${meta.fileSizeKb.toStringAsFixed(1)} KB';
+                  final showShortWarning =
+                      meta.isAnimated && meta.totalDurationMs <= 1200;
+                  return Column(
+                    children: [
+                      Text(
+                        summary,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: AppTheme.textMuted,
+                          fontSize: 12,
+                        ),
+                      ),
+                      if (isLegacyAnimatedFile || showShortWarning) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          isLegacyAnimatedFile
+                              ? '⚠ Eski önbellek sürümü (güncel ~3 sn için yeniden aktarın)'
+                              : '⚠ Animasyon süresi ≤ 1.2 sn',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.amber,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 14),
             ],

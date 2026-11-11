@@ -128,26 +128,37 @@
 
 ### 5. Hareketli Çıkartmaların Uygulama Ön İzlemesinde Tam Süre Oynarken WhatsApp'a Aktarımda Hâlâ ~1 Saniye Aktarılması (Export Pipeline Duration Truncation)
 - **Öncelik:** 🔴 **YÜKSEK (5. Öncelik - WhatsApp Aktarım Bütünlüğü)**
-- **Durum:** ⏳ **AÇIK / İNCELEME BEKLİYOR**
+- **Durum:** ✅ **ÇÖZÜLDÜ & FİZİKSEL CİHAZDA ADB İLE DOĞRULANDI**
 - **Sorun Tanımı:**
   - 4. maddede yapılan çalışmalar sonucunda hareketli çıkartmaların uygulama içerisindeki (frontend) ön izleme sorunu çözülmüş olup, uygulama içinde çıkartmalar tam süresiyle oynatılmaktadır.
-  - Ancak kullanıcı *"WhatsApp'a Aktar"* işlemini gerçekleştirdiğinde, WhatsApp'a aktarılan hareketli çıkartmalarda animasyonun hâlâ yalnızca ilk ~1 saniyesi aktarılmakta ve animasyon erken başa sarmaktadır.
+  - Ancak kullanıcı *"WhatsApp'a Aktar"* işlemini gerçekleştirdiğinde, WhatsApp'a aktarılan bazı hareketli çıkartmalarda animasyonun hâlâ yalnızca ilk ~0.5–1 saniyesi aktarılmakta ve animasyon erken başa sarmaktadır.
 
-- **Gözlemlenen Mimari Farkı & İncelenecek Potansiyel Nedenler (Ön Analiz):**
-  1. **Uygulama İçi Ön İzleme ile WhatsApp Aktarım Hattının Farklı Olması:**
-     - Uygulama içi ön izlemede (`AnimatedStickerPlayer` ve `pack_preview_screen.dart`), `.webm` video çıkartmalar doğrudan `VideoPlayerController.file` ile, `.tgs` vektör çıkartmalar ise doğrudan `Lottie.memory` ile ham Telegram dosyalarından tam süresinde oynatılmaktadır.
-     - WhatsApp'a aktarımda ise dosyalar Android `MainActivity.kt` (`extractFrames`) + `StickerProcessor` (`processVideoSticker` / `processLottieSticker` -> `_createAnimatedWebpFromPngFramesSync`) hattından geçirilerek `_wa_v2.webp` formatına dönüştürülür ve `StickerContentProvider` üzerinden WhatsApp'a verilir. Bu nedenle frontend ön izlemesinin tam olması, WhatsApp'a üretilen WebP dosyasının da tam süreli üretildiğini garanti etmez.
-  2. **Olası Kök Neden — `MainActivity.kt` İçerisindeki 1 Saniyelik Fallback Yolu (`MediaMetadataRetriever`):**
-     - `MainActivity.kt` içindeki `MediaCodec` çıkarımı başarısız olduğunda veya hiç kare döndüremediğinde (`frames.isEmpty()`), devreye giren `MediaMetadataRetriever` fallback bloğu yalnızca 2 kare (`0` ve `500000L` µs) almakta ve açıkça `actualDurationMs = 1000L`, `calculatedFrameDelayMs = 500` (toplam 1.0 saniye) atamaktadır.
-  3. **Olası Kök Neden — `MediaCodec` Kare Örnekleme / Süre Okuma veya `StickerProcessor` 1 Saniyelik Güvenlik Basamağı:**
-     - `MediaCodec` döngüsünde süre/PTS (`KEY_DURATION` / `presentationTimeUs`) kaynaklı erken durma yaşanıp yaşanmadığı veya `StickerProcessor._createAnimatedWebpFromPngFramesSync` son güvenlik basamağının (`smallerCanvas.frameDuration = 500`, 2 kare = 1000 ms) boyut limiti nedeniyle devreye girip girmediği kontrol edilmelidir.
-     - Ayrıca `package:image` (`img.encodeWebP`) çıktısındaki kare gecikme sürelerinin (`frameDuration`) WhatsApp'ın yerel WebP oynatıcısı tarafından nasıl yorumlandığı ve `forceRefresh: false` / önbellek dosyalarının eski çıktıyı servis edip etmediği gerçek cihaz loglarıyla doğrulanmalıdır.
+- **Tespit Edilen Kök Nedenler & Uygulanan Çözümler:**
+  1. **`MainActivity.kt` (`MediaMetadataRetriever` Bozuk `33 ms` Süre Raporu, `MediaCodec` EOS Hatası, Kalite Eşiği & Renk Formatı):**
+     - Fiziksel cihazda (`2209116AG`) `adb logcat` ve `StickerContentProvider` üzerinden çekilen `_wa_v3.webp` dosyaları incelendiğinde, `AgADAxsAAprcYVE.webm` için `MediaMetadataRetriever` metadata değerinin **`retrieverDurUs=33000` (33 ms)** döndürdüğü tespit edildi. Eski kod `33000 > 0L` olduğu için bu değeri doğru kabul edip `safeDurationMs=500`, `targetFrameCount=6` ile çözümü 6 kare (`498 ms` / 0.50 sn, 27.4 KB) olarak kesiyordu.
+     - [`probeVideoStreamDurationUs`](file:///d:/stickerswap/android/app/src/main/kotlin/com/example/stickerswap/MainActivity.kt#L279) (`MediaExtractor` ile video izi PTS taraması) eklendi; [`extractVideoFrames`](file:///d:/stickerswap/android/app/src/main/kotlin/com/example/stickerswap/MainActivity.kt#L217) artık `knownDurationUs = maxOf(retrieverDurationUs, streamDurationUs)` kullanır (`AgADAxsAAprcYVE.webm` için `streamDurUs=3533000` -> `22/22` kare, `3000 ms`) ve gerçek timestamp aralığı (`spannedMs`) biliniyorsa kısa süreyi buna yükseltir.
+     - `extractWithMediaCodec` döngüsünde `inputDone` + `totalIdleIterations` korumaları eklendi; giriş bittiğinde `BUFFER_FLAG_END_OF_STREAM` tekrarının `IllegalStateException` tetiklemesi ve çıkışsız kilitlenmeler önlendi.
+     - [`isSufficientOutcome`](file:///d:/stickerswap/android/app/src/main/kotlin/com/example/stickerswap/MainActivity.kt#L190) (hedef karelerin en az 2/3'ü ve bilinen >1.5s videoda >=1200 ms süre kapsaması) + [`pickBestOutcome`](file:///d:/stickerswap/android/app/src/main/kotlin/com/example/stickerswap/MainActivity.kt#L205) eklendi; yetersiz donanım çözümünde (`hw-mediacodec`) otomatik olarak yazılımsal `MediaCodec` (`preferSoftware = true`) ve çok kareli `extractWithRetriever` (`OPTION_CLOSEST` + `OPTION_CLOSEST_SYNC` fallback) denenir.
+     - `encodeOutputFrameToJpeg` fonksiyonu `decoder.getOutputImage(outIdx)` (`ImageFormat.YUV_420_888`) tercih edecek şekilde güncellendi (`rawYuvToNv21` fallback'i korundu) ve `250` ms gecikme üst sınırı kaldırıldı (`.coerceIn(8, 3000)`).
+  2. **`StickerProcessor` Süre Kırpmaları, Son Güvenlik Basamağının 1 Saniyeye Düşmesi ve Eski Önbellekler:**
+     - `_createAnimatedWebpFromPngFramesSync` son güvenlik basamağında karelerin 2'ye düşürülüp `1000 ms` sabitlenmesi ve `250/500 ms` gecikme tavanları kaldırıldı; `_animatedEncodeTiers` + `_sampleFramesEvenly` + `_computeDurationPreservingDelay` ile hedef animasyon süresi (<=3000 ms) ve `<= 460 KB` dosya boyutu sınırı birlikte korundu.
+     - `processVideoSticker` ve `processLottieSticker` içindeki `250` ms gecikme üst sınırı kaldırıldı; Lottie kare çizimi `BoxFit.contain` / `0.999` progress sınırı / `dispose()` ile düzeltildi.
+     - Çıktı dosya adı **`_wa_v4.webp`** olarak güncellendi ve `_cleanupLegacyAnimatedCache` ile eski `_wa.webp`, `_wa_v2.webp`, `_wa_v3.webp` dosyaları temizlendi.
+  3. **WhatsApp İstemci Önbelleği, `"Paketlerim"` Eski Yol Tuzağı ve Cihaz İçi WebP Teşhisi:**
+     - `WhatsAppMethodHandler.kt` (`addStickerPack` & `deleteStickerPack`): aynı paket güncellendiğinde `imageDataVersion` otomatik artırılır ve `notifyPackChanged` ile `StickerContentProvider` değişim bildirimleri gönderilir.
+     - `PackPreviewScreen` & `MyPacksScreen` + `lib/widgets/installed_pack_cache_dialog.dart`: paket WhatsApp'ta zaten yüklüyse (`isPackInstalled`) `WhatsAppService.buildVersionedIdentifier` ile cache-busting kopya veya mevcuta yazma seçeneği sunulur; `MyPacksScreen._reAddToWhatsApp` ise eski önbellekleri `_wa_v4.webp` ile çözer ya da uyarır.
+     - `lib/services/webp_inspector.dart` + `MyPacksScreen._showStickerPreviewModal`: `"Paketlerim"` ön izleme alt sayfasında WebP dosyasının gerçek `genişlik×yükseklik`, `kare sayısı`, `toplam süre (sn)` ve `KB` bilgisini gösterir.
+  4. **Birim Testleri, Release APK ve Fiziksel Cihaz ADB Doğrulaması:**
+     - `flutter test` (`26/26` test geçti) ve hedefli `flutter analyze` hatasız tamamlandı.
+     - Fiziksel cihazda (`100.107.62.92:5555`, `release` APK) `sonerinkarisi_by_fStikBot` (8 hareketli çıkartma) için WhatsApp aktarımı canlı tetiklendi:
+       - **`AgADAxsAAprcYVE_wa_v4.webp`** (`#2`): `retrieverDurUs=33000` iken `streamDurUs=3533000` tespit edilerek **`22/22` benzersiz kare, `136 ms/kare`, toplam `2992 ms` (`2.99 sn`), `106,442 byte`** olarak üretildi.
+       - 8 çıkartmanın tamamı `StickerContentProvider`'dan çekilip RIFF/ANMF parçaları incelenerek **`12–22` benzersiz kare ve `1.50 sn – 2.99 sn`** (`54.9 KB – 214.4 KB`) aralığında doğrulandı; WhatsApp `AddThirdPartyStickerPackActivity` ön izleme penceresinde zamanlı ekran görüntüleriyle tam döngü oynatım ve `"Paketlerim"` alt sayfasında `512×512 · 22 kare · 2.99 sn · 103.9 KB` göstergesi doğrulandı.
 
-- **Planlanan Adımlar (TODO):**
-  - [ ] Gerçek cihazda dışa aktarma sırasında üretilen `_wa_v2.webp` dosyalarının kare sayısını, `frameDuration` bilgisini, dosya boyutunu ve `MainActivity.kt` (`extractFrames`) dönüş değerlerini loglamak.
-  - [ ] `MediaCodec` çıkarımının `.webm` çıkartmalarda fallback'e (`1000L` ms) düşüp düşmediğini kontrol etmek ve fallback durumunda da tam süreyi kapsayan çok kareli çıkarım yapmak.
-  - [ ] `StickerProcessor` içerisindeki boyut sıkıştırma güvenlik basamaklarının animasyonu 1 saniyeye indirmesini engellemek ve üretilen WebP süresinin WhatsApp'ta tam oynadığını doğrulamak.
-  - [ ] WhatsApp'a aktarım sonrası gerçek cihaz üzerinde uçtan uca süre testi yapmak.
+- **Durum Takibi (Action Items):**
+  - [x] `MainActivity.kt` `probeVideoStreamDurationUs` (`MediaExtractor` PTS taraması) + `extractFrames` (`MediaCodec` EOS/YUV420/kalite eşiği + SW codec + tam süreli çok kareli `MediaMetadataRetriever` fallback) düzeltmeleri yapıldı.
+  - [x] `StickerProcessor` süre/önbellek (`_wa_v4.webp`), `WhatsAppMethodHandler` `imageDataVersion`/`notifyPackChanged`, `MyPacksScreen`/`PackPreviewScreen` cache koruması ve `WebpInspector` eklendi.
+  - [x] `test/sticker_processor_isolate_test.dart` ve `test/webp_inspector_and_lottie_test.dart` testleri çalıştırıldı (`flutter test`: 26/26 geçti).
+  - [x] Fiziksel Android cihaz üzerinde (`adb` kablosuz hata ayıklama `100.107.62.92:5555`) release APK ile WhatsApp aktarımı, `logcat`, `StickerContentProvider` `_wa_v4.webp` RIFF/ANMF süre/kare incelemesi ve `Paketlerim` `WebpInspector` çıktısı doğrulandı.
 
 ---
 ---
@@ -243,21 +254,34 @@
 
 ### 5. Animated Stickers Play Full Duration in App Frontend Preview but Still Export ~1 Second to WhatsApp
 - **Priority:** 🔴 **HIGH (Item 5 - WhatsApp Export Fidelity)**
-- **Status:** ⏳ **OPEN / PENDING INVESTIGATION**
+- **Status:** ✅ **RESOLVED & VERIFIED ON PHYSICAL DEVICE VIA ADB**
 - **Issue Description:**
   - Following the updates in Item 4, animated stickers now play at their full duration in the app's frontend preview.
-  - However, when exporting to WhatsApp (*"Export to WhatsApp"*), the transferred animated stickers still play for only ~1 second before looping prematurely.
+  - However, when exporting to WhatsApp (*"Export to WhatsApp"*), some transferred animated stickers still play for only ~0.5–1 second before looping prematurely.
 
-- **Observed Pipeline Difference & Suspected Areas to Investigate (Pre-Analysis):**
-  1. **Frontend Preview vs. WhatsApp Export Pipeline Split:**
-     - In-app preview (`AnimatedStickerPlayer` and `pack_preview_screen.dart`) plays raw `.webm` files via `VideoPlayerController.file` and raw `.tgs` files via `Lottie.memory` directly from Telegram.
-     - WhatsApp export converts stickers into `_wa_v2.webp` through `MainActivity.kt` (`extractFrames`) + `StickerProcessor` (`processVideoSticker` / `processLottieSticker` -> `_createAnimatedWebpFromPngFramesSync`) and serves them via `StickerContentProvider`. Therefore, a full-length frontend preview does not guarantee the exported WebP file preserves full duration.
-  2. **Potential Root Cause — 1-Second `MediaMetadataRetriever` Fallback in `MainActivity.kt`:**
-     - When `MediaCodec` extraction fails or returns `frames.isEmpty()`, the `MediaMetadataRetriever` fallback only captures 2 frames (`0` and `500000L` µs) and hardcodes `actualDurationMs = 1000L` and `calculatedFrameDelayMs = 500` (1.0 second total).
-  3. **Potential Root Cause — Extraction Timing, 1s Safety Downscale Guard, or WebP Timing/Cache:**
-     - Need to verify on-device whether `MediaCodec` exits early or triggers fallback, whether `StickerProcessor._createAnimatedWebpFromPngFramesSync`'s final safety fallback (`smallerCanvas.frameDuration = 500`, 2 frames = 1000 ms) is being hit under the 460 KB cap, how WhatsApp's WebP player interprets `package:image` `img.encodeWebP` frame durations, and whether cached files (`forceRefresh: false`) are reused.
+- **Confirmed Root Causes & Implemented Fixes:**
+  1. **`MainActivity.kt` (Bogus `33 ms` Container Duration, `MediaCodec` EOS Error, Completeness Threshold & Pixel Format Handling):**
+     - Live `adb logcat` and `StickerContentProvider` WebP inspection on a physical Android device (`2209116AG`) revealed that `MediaMetadataRetriever.METADATA_KEY_DURATION` reported **`retrieverDurUs=33000` (33 ms)** on `AgADAxsAAprcYVE.webm`. Because `33000 > 0L`, `durationWasEstimated` was `false`, clamping `safeDurationMs=500` and `targetFrameCount=6` and emitting a `6`-frame / `498 ms` (`0.50s`, `27.4 KB`) WebP.
+     - Added [`probeVideoStreamDurationUs`](file:///d:/stickerswap/android/app/src/main/kotlin/com/example/stickerswap/MainActivity.kt#L279) (fast `MediaExtractor` PTS scan over video packets) and updated [`extractVideoFrames`](file:///d:/stickerswap/android/app/src/main/kotlin/com/example/stickerswap/MainActivity.kt#L217) to take `knownDurationUs = maxOf(retrieverDurationUs, streamDurationUs)` (`streamDurUs=3533000` for `AgADAxsAAprcYVE.webm` -> `22/22` frames, `3000 ms`), plus `spannedMs > safeDurationMs` floor protection.
+     - Added `inputDone` + `totalIdleIterations` guards inside `extractWithMediaCodec` so EOF signaling never queues duplicate EOS buffers or hangs mid-stream.
+     - Upgraded `extractVideoFrames` with [`isSufficientOutcome`](file:///d:/stickerswap/android/app/src/main/kotlin/com/example/stickerswap/MainActivity.kt#L190) (>= 2/3 of `targetFrameCount` and >= 1200 ms coverage when known duration >= 1500 ms) plus [`pickBestOutcome`](file:///d:/stickerswap/android/app/src/main/kotlin/com/example/stickerswap/MainActivity.kt#L205) across `hw-mediacodec`, `sw-mediacodec` (`preferSoftware = true`), and multi-frame `extractWithRetriever` (`OPTION_CLOSEST` with `OPTION_CLOSEST_SYNC` fallback).
+     - Updated `encodeOutputFrameToJpeg` to prefer `decoder.getOutputImage(outIdx)` (`ImageFormat.YUV_420_888`), keeping `rawYuvToNv21` fallback, and removed the `250` ms upper delay clamp (`.coerceIn(8, 3000)`).
+  2. **`StickerProcessor` Duration Clamps, 1s Final Fallback Collapse & Stale Cache Isolation:**
+     - Removed `250` ms / `500` ms per-frame delay clamps across `processVideoSticker`, `processLottieSticker`, and `_createAnimatedWebpFromPngFramesSync`, replacing the hardcoded 2-frame `1000 ms` fallback with progressive duration-preserving tiers (`_animatedEncodeTiers`, `_sampleFramesEvenly`, `_computeDurationPreservingDelay`, `_tryEncodeAnimatedTier`) under `<= 460 KB`.
+     - Updated `processLottieSticker` to use `BoxFit.contain`, `0.999` progress clamping, and explicit `ui.Picture` / `ui.Image` disposal.
+     - Bumped animated output cache filenames to **`_wa_v4.webp`** with `_cleanupLegacyAnimatedCache` removing legacy `_wa.webp`, `_wa_v2.webp`, and `_wa_v3.webp` files.
+  3. **WhatsApp Client Cache, `"My Packs"` Legacy Paths & On-Device WebP Diagnostics:**
+     - `WhatsAppMethodHandler.kt` (`addStickerPack` & `deleteStickerPack`): auto-increments `imageDataVersion` for updated packs and calls `notifyPackChanged` on `StickerContentProvider` URIs.
+     - `PackPreviewScreen` & `MyPacksScreen` + `lib/widgets/installed_pack_cache_dialog.dart`: detects installed animated packs (`isPackInstalled`) and prompts for a cache-busting identifier (`WhatsAppService.buildVersionedIdentifier`) or existing metadata update; `MyPacksScreen._reAddToWhatsApp` resolves upgraded `_wa_v4.webp` files or warns on legacy caches.
+     - `lib/services/webp_inspector.dart` + `MyPacksScreen._showStickerPreviewModal`: parses `VP8X`/`ANIM`/`ANMF` chunks directly to display frame count, total duration (`s`), pixel size, and KB on device.
+  4. **Tests, Release Build & On-Device ADB Verification:**
+     - `flutter test` (`26/26` passed) and targeted `flutter analyze` completed cleanly.
+     - Triggered live export of `sonerinkarisi_by_fStikBot` (`8` animated `.webm` stickers) on physical device `100.107.62.92:5555` running the release APK:
+       - **`AgADAxsAAprcYVE_wa_v4.webp`** (`#2`): despite `retrieverDurUs=33000`, `streamDurUs=3533000` produced **`22/22` unique frames, `136 ms/frame`, `2992 ms` (`2.99s`), `106,442 bytes`**.
+       - Pulled all 8 `_wa_v4.webp` files from `StickerContentProvider` and inspected binary RIFF/ANMF chunks: all 8 measured **`12–22` unique frames and `1.50s – 2.99s`** (`54.9 KB – 214.4 KB`); verified full-duration playback in WhatsApp `AddThirdPartyStickerPackActivity` and `"My Packs"` `WebpInspector` modal (`512×512 · 22 kare · 2.99 sn · 103.9 KB`).
 
-- **Planned Action Items (TODO):**
-  - [ ] Log on-device `extractFrames` output (`frames.size`, `durationMs`, `frameDelayMs`) and exported `_wa_v2.webp` frame counts, durations, and byte sizes during WhatsApp export.
-  - [ ] Verify whether `.webm` (VP9/alpha) stickers fall back to `MediaMetadataRetriever` (`1000L` ms) and upgrade the fallback path to sample multi-frame full duration.
-  - [ ] Ensure `StickerProcessor` size-fallback steps preserve full duration (up to 3000 ms) instead of collapsing to 1000 ms, and verify actual playback inside WhatsApp on a physical device.
+- **Action Items:**
+  - [x] Add `probeVideoStreamDurationUs` (`MediaExtractor` PTS scan) and rewrite `MainActivity.kt` `extractFrames` (`MediaCodec` EOS/YUV420/completeness threshold + SW codec retry + multi-frame full-duration `MediaMetadataRetriever` fallback).
+  - [x] Update `StickerProcessor` (`_wa_v4.webp`), `WhatsAppMethodHandler` (`imageDataVersion`/`notifyPackChanged`), `MyPacksScreen`/`PackPreviewScreen` cache guards, and `WebpInspector`.
+  - [x] Run regression tests across `test/sticker_processor_isolate_test.dart` and `test/webp_inspector_and_lottie_test.dart` (`flutter test`: 26/26 passed).
+  - [x] Verify end-to-end WhatsApp export, `adb logcat`, pulled `StickerContentProvider` `_wa_v4.webp` RIFF/ANMF metrics, live WhatsApp preview sheet animation, and on-device `WebpInspector` modal readout on physical device `100.107.62.92:5555`.

@@ -12,6 +12,7 @@ import '../services/sticker_processor.dart';
 import '../services/whatsapp_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/gradient_button.dart';
+import '../widgets/installed_pack_cache_dialog.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/animated_sticker_player.dart';
 
@@ -543,8 +544,19 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
       // Single-part export
       if (preparedParts.length == 1) {
         final part = preparedParts.first;
+        if (!mounted) return;
+        final targetPackId = await resolveAnimatedPackExportIdentifier(
+          context: context,
+          baseIdentifier: part.packId,
+          whatsappService: _whatsappService,
+          isAnimated: part.isAnimated,
+        );
+        if (targetPackId == null) {
+          if (mounted) _showSnackBar('WhatsApp\'a ekleme iptal edildi.');
+          return;
+        }
         final result = await _whatsappService.addStickerPack(
-          identifier: part.packId,
+          identifier: targetPackId,
           name: part.packName,
           publisher: part.publisher,
           trayPath: part.trayPath,
@@ -1626,8 +1638,19 @@ class _MultiPartExportSheetState extends State<_MultiPartExportSheet> {
     });
 
     try {
+      final targetPackId = await resolveAnimatedPackExportIdentifier(
+        context: context,
+        baseIdentifier: part.packId,
+        whatsappService: widget.whatsappService,
+        isAnimated: part.isAnimated,
+      );
+      if (targetPackId == null) {
+        part.isCancelled = true;
+        return;
+      }
+
       final result = await widget.whatsappService.addStickerPack(
-        identifier: part.packId,
+        identifier: targetPackId,
         name: part.packName,
         publisher: part.publisher,
         trayPath: part.trayPath,

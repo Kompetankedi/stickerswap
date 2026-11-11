@@ -3,7 +3,7 @@ import 'dart:isolate';
 import 'dart:math';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' show Canvas, Rect;
+import 'package:flutter/material.dart' show Alignment, BoxFit, Canvas, Rect;
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:lottie/lottie.dart';
@@ -30,9 +30,24 @@ class StickerProcessor {
   static const MethodChannel _videoChannel =
       MethodChannel('com.example.stickerswap/video');
 
+  /// Deletes older animated cache variants so updated encoders regenerate clean WebPs.
+  Future<void> _cleanupLegacyAnimatedCache(
+    String outputDir,
+    String baseName,
+  ) async {
+    for (final suffix in const ['_wa.webp', '_wa_v2.webp', '_wa_v3.webp']) {
+      final oldFile = File(p.join(outputDir, '$baseName$suffix'));
+      if (await oldFile.exists()) {
+        try {
+          await oldFile.delete();
+        } catch (_) {}
+      }
+    }
+  }
+
   /// Converts a video sticker (e.g. .webm) into a WhatsApp-compliant Animated WebP.
-  /// Dynamically computes frame delay and targets 20-22 frames across the full video duration
-  /// (up to WhatsApp's 3.0s limit) to prevent premature looping and fast-forward truncation.
+  /// Dynamically computes frame delay across the full video duration (up to 3.0s)
+  /// to prevent premature looping and fast-forward truncation.
   /// Heavy frame decoding and multi-frame WebP encoding run inside an isolate worker.
   Future<String> processVideoSticker(
     String videoPath,
@@ -40,8 +55,8 @@ class StickerProcessor {
     Uint8List? fallbackThumbnailBytes,
     bool forceRefresh = false,
   }) async {
-    final outputName =
-        '${p.basenameWithoutExtension(videoPath)}_wa_v2.webp';
+    final baseName = p.basenameWithoutExtension(videoPath);
+    final outputName = '${baseName}_wa_v4.webp';
     final outputPath = p.join(outputDir, outputName);
 
     // Fast return if already processed, not forcing refresh, and within valid limits
@@ -53,21 +68,10 @@ class StickerProcessor {
       }
     }
 
-    // Clean up older truncated _wa.webp cache file if present
-    final oldPath = p.join(
-      outputDir,
-      '${p.basenameWithoutExtension(videoPath)}_wa.webp',
-    );
-    final oldFile = File(oldPath);
-    if (await oldFile.exists()) {
-      try {
-        await oldFile.delete();
-      } catch (_) {}
-    }
+    await _cleanupLegacyAnimatedCache(outputDir, baseName);
 
     try {
-      // 1. Extract frames via Android native MediaCodec sequential extractor
-      // Request target 8 fps and max 22 frames to cover full 2.5s - 3.0s duration
+      // Extract frames via Android native MediaCodec sequential extractor
       final dynamic rawResult = await _videoChannel.invokeMethod('extractFrames', {
         'videoPath': videoPath,
         'fps': 8,
@@ -75,24 +79,34 @@ class StickerProcessor {
       });
 
       List<Uint8List> frames = [];
-      int frameDelayMs = 125;
       int totalDurationMs = 3000;
+      int frameDelayMs = 125;
 
       if (rawResult is Map) {
         final rawFrames = rawResult['frames'];
         if (rawFrames is List && rawFrames.isNotEmpty) {
-          frames = rawFrames.cast<Uint8List>();
+          frames = rawFrames.whereType<Uint8List>().toList();
         }
-        totalDurationMs = (rawResult['durationMs'] as num?)?.toInt() ?? 3000;
-        frameDelayMs = (rawResult['frameDelayMs'] as num?)?.toInt() ??
-            (frames.isNotEmpty ? (totalDurationMs ~/ frames.length) : 125);
+        final reportedDuration = (rawResult['durationMs'] as num?)?.toInt();
+        if (reportedDuration != null && reportedDuration > 0) {
+          totalDurationMs = reportedDuration.clamp(200, 3000);
+        }
+        final reportedDelay = (rawResult['frameDelayMs'] as num?)?.toInt();
+        if (reportedDelay != null && reportedDelay > 0) {
+          frameDelayMs = reportedDelay.clamp(8, 3000);
+        } else if (frames.isNotEmpty) {
+          frameDelayMs = (totalDurationMs / frames.length).round().clamp(8, 3000);
+        }
       } else if (rawResult is List && rawResult.isNotEmpty) {
-        frames = rawResult.cast<Uint8List>();
-        frameDelayMs = (3000 ~/ frames.length).clamp(8, 250);
-        totalDurationMs = frames.length * frameDelayMs;
+        frames = rawResult.whereType<Uint8List>().toList();
+        frameDelayMs = (totalDurationMs / frames.length).round().clamp(8, 3000);
       }
 
       if (frames.isNotEmpty) {
+        debugPrint(
+          'processVideoSticker($baseName): extracted=${frames.length} frames, '
+          'duration=${totalDurationMs}ms, delay=${frameDelayMs}ms',
+        );
         // Offload heavy image decoding and WebP compression to background Isolate
         return await Isolate.run(() {
           return _createAnimatedWebpFromPngFramesSync(
@@ -122,7 +136,7 @@ class StickerProcessor {
   }
 
   /// Converts a Lottie sticker (.tgs) into a compliant 512x512 Animated WebP.
-  /// Dynamically computes frame count and frame delay from composition duration (up to 3.0s)
+  /// Samples frames evenly across full composition duration (up to 3.0s)
   /// so animations play at natural 1.0x speed without premature truncation.
   /// Yields to the UI event loop during frame extraction, then offloads
   /// Animated WebP encoding to a background isolate.
@@ -132,8 +146,8 @@ class StickerProcessor {
     Uint8List? fallbackThumbnailBytes,
     bool forceRefresh = false,
   }) async {
-    final outputName =
-        '${p.basenameWithoutExtension(tgsPath)}_wa_v2.webp';
+    final baseName = p.basenameWithoutExtension(tgsPath);
+    final outputName = '${baseName}_wa_v4.webp';
     final outputPath = p.join(outputDir, outputName);
 
     final outputFile = File(outputPath);
@@ -144,17 +158,7 @@ class StickerProcessor {
       }
     }
 
-    // Clean up older truncated _wa.webp cache file if present
-    final oldPath = p.join(
-      outputDir,
-      '${p.basenameWithoutExtension(tgsPath)}_wa.webp',
-    );
-    final oldFile = File(oldPath);
-    if (await oldFile.exists()) {
-      try {
-        await oldFile.delete();
-      } catch (_) {}
-    }
+    await _cleanupLegacyAnimatedCache(outputDir, baseName);
 
     try {
       final fileBytes = await File(tgsPath).readAsBytes();
@@ -162,50 +166,52 @@ class StickerProcessor {
       final composition = await LottieComposition.fromBytes(unzipped);
       final drawable = LottieDrawable(composition);
 
-      // WhatsApp max animation duration is 3000 ms (3 seconds)
+      // WhatsApp target animation duration ceiling (Telegram .tgs max is 3000 ms)
       final compositionDurationMs = composition.duration.inMilliseconds;
       final totalDurationMs =
-          (compositionDurationMs > 0 ? compositionDurationMs : 3000).clamp(500, 3000);
+          (compositionDurationMs > 0 ? compositionDurationMs : 3000)
+              .clamp(200, 3000);
 
-      // Target ~8 fps for optimal smoothness and WebP size
-      // e.g. for 3000ms -> 22 frames; for 2000ms -> 16 frames; for 1000ms -> 8 frames
-      final frameCount = ((totalDurationMs / 1000.0) * 8).round().clamp(8, 22);
-      final frameDelayMs = (totalDurationMs / frameCount).round().clamp(8, 250);
+      // Target ~8 fps across full duration, allowing up to totalDurationMs/frameCount delay
+      final frameCount = ((totalDurationMs / 1000.0) * 8).round().clamp(4, 22);
+      final frameDelayMs =
+          (totalDurationMs / frameCount).round().clamp(8, 3000);
 
       final frames = <Uint8List>[];
-      final bounds = composition.bounds;
-      final drawRect = Rect.fromLTWH(
-        bounds.left.toDouble(),
-        bounds.top.toDouble(),
-        bounds.width.toDouble(),
-        bounds.height.toDouble(),
+      final targetRect = Rect.fromLTWH(
+        _padding.toDouble(),
+        _padding.toDouble(),
+        (_whatsappSize - (_padding * 2)).toDouble(),
+        (_whatsappSize - (_padding * 2)).toDouble(),
       );
-      const size = 512.0;
-      const pad = 16.0;
-      final drawSize = size - (pad * 2);
-      final scale = min(drawSize / bounds.width, drawSize / bounds.height);
-      final scaledW = bounds.width * scale;
-      final scaledH = bounds.height * scale;
-      final dx = (size - scaledW) / 2.0;
-      final dy = (size - scaledH) / 2.0;
 
       for (int i = 0; i < frameCount; i++) {
-        final progress = frameCount > 1 ? i / (frameCount - 1) : 0.0;
+        // Clamp below 1.0 so compositions with exclusive out-point don't render a blank final frame
+        final progress =
+            frameCount > 1 ? (i / (frameCount - 1)).clamp(0.0, 0.999) : 0.0;
         drawable.setProgress(progress);
 
         final recorder = ui.PictureRecorder();
         final canvas = Canvas(recorder);
-        canvas.save();
-        canvas.translate(dx, dy);
-        canvas.scale(scale, scale);
-        drawable.draw(canvas, drawRect);
-        canvas.restore();
+        drawable.draw(
+          canvas,
+          targetRect,
+          fit: BoxFit.contain,
+          alignment: Alignment.center,
+        );
 
         final picture = recorder.endRecording();
-        final uiImg = await picture.toImage(512, 512);
-        final byteData = await uiImg.toByteData(format: ui.ImageByteFormat.png);
-        if (byteData != null) {
-          frames.add(byteData.buffer.asUint8List());
+        ui.Image? uiImg;
+        try {
+          uiImg = await picture.toImage(_whatsappSize, _whatsappSize);
+          final byteData =
+              await uiImg.toByteData(format: ui.ImageByteFormat.png);
+          if (byteData != null) {
+            frames.add(byteData.buffer.asUint8List());
+          }
+        } finally {
+          uiImg?.dispose();
+          picture.dispose();
         }
 
         // Yield to event loop between frames to keep UI responsive
@@ -213,6 +219,10 @@ class StickerProcessor {
       }
 
       if (frames.isNotEmpty) {
+        debugPrint(
+          'processLottieSticker($baseName): rendered=${frames.length} frames, '
+          'duration=${totalDurationMs}ms, delay=${frameDelayMs}ms',
+        );
         return await Isolate.run(() {
           return _createAnimatedWebpFromPngFramesSync(
             pngFrames: frames,
@@ -354,40 +364,168 @@ class StickerProcessor {
   // Synchronous Worker Routines (Executed inside background Dart Isolates)
   // =========================================================================
 
-  /// Composes a sequence of [frames] into an animated [img.Image] canvas of 512x512.
-  static img.Image _composeAnimatedCanvas(
-    List<img.Image> frames,
+  /// Progressive quality/resolution tiers that shrink canvas artwork and frame count
+  /// gradually while preserving full animation duration.
+  static const List<({
+    int targetFrames,
+    int drawSize,
+    int alphaQuality,
+    int method,
+    List<int> qualities,
+  })> _animatedEncodeTiers = [
+    (
+      targetFrames: 0, // Use all available frames
+      drawSize: _whatsappSize - (_padding * 2),
+      alphaQuality: 75,
+      method: 3,
+      qualities: [70, 52, 35, 20],
+    ),
+    (
+      targetFrames: 12,
+      drawSize: 420,
+      alphaQuality: 65,
+      method: 2,
+      qualities: [60, 40, 22],
+    ),
+    (
+      targetFrames: 8,
+      drawSize: 360,
+      alphaQuality: 55,
+      method: 2,
+      qualities: [50, 30, 15],
+    ),
+    (
+      targetFrames: 6,
+      drawSize: 300,
+      alphaQuality: 45,
+      method: 2,
+      qualities: [40, 22, 10],
+    ),
+    (
+      targetFrames: 4,
+      drawSize: 240,
+      alphaQuality: 35,
+      method: 2,
+      qualities: [30, 15, 8],
+    ),
+    (
+      targetFrames: 2,
+      drawSize: 192,
+      alphaQuality: 25,
+      method: 2,
+      qualities: [20, 10, 5],
+    ),
+    (
+      targetFrames: 2,
+      drawSize: 128,
+      alphaQuality: 20,
+      method: 2,
+      qualities: [10, 5],
+    ),
+  ];
+
+  /// Renders a single [frame] centered inside a 512x512 RGBA sticker canvas.
+  static img.Image _renderStickerFrameCanvas(
+    img.Image frame,
     int delayMs,
+    int drawSize,
   ) {
-    const availableSize = _whatsappSize - (_padding * 2);
-    final first = frames.first;
-    final baseCanvas = img.Image(
+    final frameCanvas = img.Image(
       width: _whatsappSize,
       height: _whatsappSize,
       numChannels: 4,
     );
-    final resizedFirst = _fitImage(first, availableSize);
-    final ox = (_whatsappSize - resizedFirst.width) ~/ 2;
-    final oy = (_whatsappSize - resizedFirst.height) ~/ 2;
-    img.compositeImage(baseCanvas, resizedFirst, dstX: ox, dstY: oy);
-    baseCanvas.frameDuration = delayMs;
-    baseCanvas.loopCount = 0; // Infinite loop required by WhatsApp
+    final resized = _fitImage(frame, drawSize);
+    final ox = (_whatsappSize - resized.width) ~/ 2;
+    final oy = (_whatsappSize - resized.height) ~/ 2;
+    img.compositeImage(frameCanvas, resized, dstX: ox, dstY: oy);
+    frameCanvas.frameDuration = delayMs;
+    return frameCanvas;
+  }
 
+  /// Composes a sequence of [frames] into an animated [img.Image] canvas of 512x512.
+  static img.Image _composeAnimatedCanvas(
+    List<img.Image> frames,
+    int delayMs, {
+    int drawSize = _whatsappSize - (_padding * 2),
+  }) {
+    final baseCanvas =
+        _renderStickerFrameCanvas(frames.first, delayMs, drawSize);
+    baseCanvas.loopCount = 0; // Infinite loop required by WhatsApp
     for (int i = 1; i < frames.length; i++) {
-      final f = frames[i];
-      final frameCanvas = img.Image(
-        width: _whatsappSize,
-        height: _whatsappSize,
-        numChannels: 4,
+      baseCanvas.frames.add(
+        _renderStickerFrameCanvas(frames[i], delayMs, drawSize),
       );
-      final resized = _fitImage(f, availableSize);
-      final fx = (_whatsappSize - resized.width) ~/ 2;
-      final fy = (_whatsappSize - resized.height) ~/ 2;
-      img.compositeImage(frameCanvas, resized, dstX: fx, dstY: fy);
-      frameCanvas.frameDuration = delayMs;
-      baseCanvas.frames.add(frameCanvas);
     }
     return baseCanvas;
+  }
+
+  /// Samples [targetCount] frames evenly across [source], always retaining first and last.
+  static List<img.Image> _sampleFramesEvenly(
+    List<img.Image> source,
+    int targetCount,
+  ) {
+    if (source.length <= targetCount) {
+      return List<img.Image>.from(source);
+    }
+    if (targetCount <= 2) {
+      return [source.first, source.last];
+    }
+    final sampled = <img.Image>[];
+    final lastIndex = source.length - 1;
+    for (int i = 0; i < targetCount; i++) {
+      final idx =
+          ((i * lastIndex) / (targetCount - 1)).round().clamp(0, lastIndex);
+      sampled.add(source[idx]);
+    }
+    return sampled;
+  }
+
+  /// Computes per-frame delay preserving [targetDurationMs] without exceeding 3000 ms.
+  static int _computeDurationPreservingDelay(
+    int frameCount,
+    int targetDurationMs,
+  ) {
+    final safeTotalMs = targetDurationMs.clamp(frameCount * 8, 3000);
+    var delay = (safeTotalMs / frameCount).round().clamp(8, 3000);
+    if (frameCount * delay > 3000) {
+      delay = (3000 ~/ frameCount).clamp(8, 3000);
+    }
+    return delay;
+  }
+
+  /// Encodes [canvas] through [qualities], skipping middle passes when far over [maxBytes].
+  static ({Uint8List? matched, Uint8List? smallest}) _tryEncodeAnimatedTier({
+    required img.Image canvas,
+    required List<int> qualities,
+    required int alphaQuality,
+    required int method,
+    required int maxBytes,
+  }) {
+    Uint8List? smallest;
+    for (int i = 0; i < qualities.length; i++) {
+      final bytes = Uint8List.fromList(
+        img.encodeWebP(
+          canvas,
+          lossless: false,
+          exact: false,
+          quality: qualities[i],
+          method: method,
+          alphaQuality: alphaQuality,
+        ),
+      );
+      if (smallest == null || bytes.length < smallest.length) {
+        smallest = bytes;
+      }
+      if (bytes.length <= maxBytes) {
+        return (matched: bytes, smallest: smallest);
+      }
+      if (i == 0 && bytes.length > maxBytes * 2 && qualities.length > 2) {
+        // Way over ceiling at tier's top quality; jump directly to its lowest quality
+        i = qualities.length - 2;
+      }
+    }
+    return (matched: null, smallest: smallest);
   }
 
   /// Synchronously encodes a list of frames into Animated WebP within a background isolate.
@@ -418,135 +556,56 @@ class StickerProcessor {
       throw Exception('Hiçbir kare çözülemedi');
     }
 
+    // Determine desired playback duration before duplicating a single-frame input
+    final derivedMs = decodedList.length * frameDelayMs;
+    final targetDurationMs =
+        (totalDurationMs > 0 ? totalDurationMs : derivedMs).clamp(16, 3000);
+
     // WhatsApp animated stickers strictly require at least 2 frames
     if (decodedList.length == 1) {
       decodedList.add(decodedList.first);
     }
 
     final maxBytes = maxKb * 1024;
-    Uint8List? bestBytes;
-    var currentFrames = List<img.Image>.from(decodedList);
-    var currentDelay = frameDelayMs.clamp(8, 500);
+    Uint8List? smallestBytes;
 
-    // Ensure total animation duration <= 3000 ms as strictly required by WhatsApp
-    if (currentFrames.length * currentDelay > 3000) {
-      currentDelay = (3000 ~/ currentFrames.length).clamp(8, 250);
-    }
-
-    // Strategy 1: Multi-quality encoding passes on full frames
-    var canvas = _composeAnimatedCanvas(currentFrames, currentDelay);
-    for (final q in const [70, 55, 40, 25, 15]) {
-      final bytes = Uint8List.fromList(
-        img.encodeWebP(canvas, lossless: false, quality: q),
+    for (final tier in _animatedEncodeTiers) {
+      final desiredCount = tier.targetFrames <= 0
+          ? decodedList.length
+          : min(decodedList.length, tier.targetFrames)
+              .clamp(2, decodedList.length);
+      final tierFrames = _sampleFramesEvenly(decodedList, desiredCount);
+      final tierDelayMs =
+          _computeDurationPreservingDelay(tierFrames.length, targetDurationMs);
+      final canvas = _composeAnimatedCanvas(
+        tierFrames,
+        tierDelayMs,
+        drawSize: tier.drawSize,
       );
-      bestBytes = bytes;
-      if (bytes.length <= maxBytes) {
-        File(outputPath).writeAsBytesSync(bytes);
+
+      final result = _tryEncodeAnimatedTier(
+        canvas: canvas,
+        qualities: tier.qualities,
+        alphaQuality: tier.alphaQuality,
+        method: tier.method,
+        maxBytes: maxBytes,
+      );
+      if (result.matched != null) {
+        File(outputPath).writeAsBytesSync(result.matched!);
         return outputPath;
       }
-    }
-
-    // Strategy 2: If still > maxKb, downsample frames (sample every 2nd frame)
-    // while preserving total animation duration
-    if (currentFrames.length > 6) {
-      final downsampled = <img.Image>[];
-      for (int i = 0; i < currentFrames.length; i += 2) {
-        downsampled.add(currentFrames[i]);
-      }
-      if (downsampled.length < 2) {
-        downsampled.add(currentFrames.last);
-      }
-      currentFrames = downsampled;
-      currentDelay = (currentDelay * 2).clamp(8, 500);
-      if (currentFrames.length * currentDelay > 3000) {
-        currentDelay = (3000 ~/ currentFrames.length).clamp(8, 250);
-      }
-      canvas = _composeAnimatedCanvas(currentFrames, currentDelay);
-
-      for (final q in const [60, 45, 30, 15]) {
-        final bytes = Uint8List.fromList(
-          img.encodeWebP(canvas, lossless: false, quality: q),
-        );
-        bestBytes = bytes;
-        if (bytes.length <= maxBytes) {
-          File(outputPath).writeAsBytesSync(bytes);
-          return outputPath;
-        }
+      final candidate = result.smallest;
+      if (candidate != null &&
+          (smallestBytes == null || candidate.length < smallestBytes.length)) {
+        smallestBytes = candidate;
       }
     }
 
-    // Strategy 3: Extreme fallback: sparse 4-frame animation while preserving duration
-    if (currentFrames.length > 4) {
-      final step = (currentFrames.length / 4).ceil();
-      final sparseFrames = <img.Image>[];
-      for (int i = 0; i < currentFrames.length; i += step) {
-        sparseFrames.add(currentFrames[i]);
-        if (sparseFrames.length == 4) break;
-      }
-      while (sparseFrames.length < 2) {
-        sparseFrames.add(currentFrames.last);
-      }
-      currentFrames = sparseFrames;
-      final targetTotal = totalDurationMs.clamp(1000, 3000);
-      currentDelay = (targetTotal ~/ currentFrames.length).clamp(80, 500);
-      if (currentFrames.length * currentDelay > 3000) {
-        currentDelay = (3000 ~/ currentFrames.length).clamp(80, 500);
-      }
-      canvas = _composeAnimatedCanvas(currentFrames, currentDelay);
-
-      for (final q in const [40, 25, 15, 10]) {
-        final bytes = Uint8List.fromList(
-          img.encodeWebP(canvas, lossless: false, quality: q),
-        );
-        bestBytes = bytes;
-        if (bytes.length <= maxBytes) {
-          File(outputPath).writeAsBytesSync(bytes);
-          return outputPath;
-        }
-      }
+    if (smallestBytes == null) {
+      throw Exception('Animasyonlu WebP oluşturulamadı: $outputPath');
     }
 
-    // Strategy 4: Strict 2-frame minimal animation if still oversized
-    if (currentFrames.length > 2) {
-      currentFrames = [currentFrames.first, currentFrames.last];
-      currentDelay = (totalDurationMs ~/ 2).clamp(250, 500);
-      canvas = _composeAnimatedCanvas(currentFrames, currentDelay);
-      for (final q in const [25, 15, 10, 5]) {
-        final bytes = Uint8List.fromList(
-          img.encodeWebP(canvas, lossless: false, quality: q),
-        );
-        bestBytes = bytes;
-        if (bytes.length <= maxBytes) {
-          File(outputPath).writeAsBytesSync(bytes);
-          return outputPath;
-        }
-      }
-    }
-
-    // Final safety guard: ensure bytes <= maxBytes unconditionally by downscaling frames
-    if (bestBytes == null || bestBytes.length > maxBytes) {
-      final smallerCanvas = img.Image(width: _whatsappSize, height: _whatsappSize, numChannels: 4);
-      final twoFrames = currentFrames.take(2).toList();
-      while (twoFrames.length < 2) {
-        twoFrames.add(twoFrames.first);
-      }
-      final sFirst = _fitImage(twoFrames[0], 360);
-      img.compositeImage(smallerCanvas, sFirst, dstX: (_whatsappSize - sFirst.width) ~/ 2, dstY: (_whatsappSize - sFirst.height) ~/ 2);
-      smallerCanvas.frameDuration = 500;
-      smallerCanvas.loopCount = 0;
-
-      final sSecond = _fitImage(twoFrames[1], 360);
-      final frame2 = img.Image(width: _whatsappSize, height: _whatsappSize, numChannels: 4);
-      img.compositeImage(frame2, sSecond, dstX: (_whatsappSize - sSecond.width) ~/ 2, dstY: (_whatsappSize - sSecond.height) ~/ 2);
-      frame2.frameDuration = 500;
-      smallerCanvas.frames.add(frame2);
-
-      bestBytes = Uint8List.fromList(
-        img.encodeWebP(smallerCanvas, lossless: false, quality: 15),
-      );
-    }
-
-    File(outputPath).writeAsBytesSync(bestBytes);
+    File(outputPath).writeAsBytesSync(smallestBytes);
     return outputPath;
   }
 

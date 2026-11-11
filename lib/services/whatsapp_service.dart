@@ -75,6 +75,22 @@ class WhatsAppService {
     return result;
   }
 
+  /// Builds a cache-busting WhatsApp pack identifier with a trailing unix timestamp.
+  static String buildVersionedIdentifier(
+    String baseIdentifier, {
+    int? epochSeconds,
+  }) {
+    final sanitized = sanitizeIdentifier(baseIdentifier)
+        .replaceAll(RegExp(r'_[0-9]{10,}$'), '');
+    final ts = epochSeconds ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
+    final suffix = '_$ts';
+    final maxBaseLen = (64 - suffix.length).clamp(1, 64);
+    final trimmedBase = sanitized.length > maxBaseLen
+        ? sanitized.substring(0, maxBaseLen)
+        : sanitized;
+    return sanitizeIdentifier('$trimmedBase$suffix');
+  }
+
   /// Sanitizes raw emoji text into a list of 1 to 3 valid Unicode emojis.
   /// Standard WhatsApp Stickers Validator rule:
   /// - Each sticker must have at least 1 and at most 3 emojis.

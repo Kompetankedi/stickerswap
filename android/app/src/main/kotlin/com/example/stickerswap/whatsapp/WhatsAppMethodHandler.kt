@@ -54,10 +54,20 @@ class WhatsAppMethodHandler(private val activity: Activity) : MethodChannel.Meth
                     }
 
                     val json = JSONObject(argsMap)
+                    val initialPack = StickerPack.fromJson(json)
+                    val existingPack = StickerPackStorage.getStickerPack(context, initialPack.identifier)
+                    if (!json.has("imageDataVersion") || json.optString("imageDataVersion", "1") == "1") {
+                        val nextVersion = if (existingPack != null && existingPack.identifier == initialPack.identifier) {
+                            ((existingPack.imageDataVersion.toIntOrNull() ?: 1) + 1).toString()
+                        } else {
+                            initialPack.imageDataVersion
+                        }
+                        json.put("imageDataVersion", nextVersion)
+                    }
                     val stickerPack = StickerPack.fromJson(json)
 
                     // Diagnostic logging for transparency
-                    Log.i(TAG, "Adding sticker pack: id=${stickerPack.identifier}, name=${stickerPack.name}, isAnimated=${stickerPack.animatedStickerPack}, count=${stickerPack.stickers.size}, tray=${stickerPack.trayImage}")
+                    Log.i(TAG, "Adding sticker pack: id=${stickerPack.identifier}, ver=${stickerPack.imageDataVersion}, name=${stickerPack.name}, isAnimated=${stickerPack.animatedStickerPack}, count=${stickerPack.stickers.size}, tray=${stickerPack.trayImage}")
                     val trayF = java.io.File(stickerPack.trayImage)
                     Log.d(TAG, "Tray icon status: exists=${trayF.exists()}, sizeBytes=${if (trayF.exists()) trayF.length() else -1}")
                     for ((idx, s) in stickerPack.stickers.withIndex()) {
@@ -67,6 +77,7 @@ class WhatsAppMethodHandler(private val activity: Activity) : MethodChannel.Meth
 
                     // 1. Save or update the pack metadata in local storage for ContentProvider
                     StickerPackStorage.saveOrUpdateStickerPack(context, stickerPack)
+                    notifyPackChanged(context, stickerPack.identifier)
 
                     // 2. Prepare intent
                     val authority = StickerContentProvider.getAuthority(context.packageName)
@@ -111,14 +122,7 @@ class WhatsAppMethodHandler(private val activity: Activity) : MethodChannel.Meth
                     val identifier = call.argument<String>("identifier")
                     if (identifier != null) {
                         StickerPackStorage.deleteStickerPack(context, identifier)
-                        try {
-                            val authority = StickerContentProvider.getAuthority(context.packageName)
-                            context.contentResolver.notifyChange(Uri.parse("content://$authority/metadata"), null)
-                            context.contentResolver.notifyChange(Uri.parse("content://$authority/metadata/$identifier"), null)
-                            context.contentResolver.notifyChange(Uri.parse("content://$authority/stickers/$identifier"), null)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to notify ContentResolver on deleteStickerPack", e)
-                        }
+                        notifyPackChanged(context, identifier)
                     }
                     result.success(true)
                 }
@@ -215,6 +219,17 @@ class WhatsAppMethodHandler(private val activity: Activity) : MethodChannel.Meth
             } ?: false
         } catch (_: Exception) {
             false
+        }
+    }
+
+    private fun notifyPackChanged(context: Context, identifier: String) {
+        try {
+            val authority = StickerContentProvider.getAuthority(context.packageName)
+            context.contentResolver.notifyChange(Uri.parse("content://$authority/metadata"), null)
+            context.contentResolver.notifyChange(Uri.parse("content://$authority/metadata/$identifier"), null)
+            context.contentResolver.notifyChange(Uri.parse("content://$authority/stickers/$identifier"), null)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to notify ContentResolver for pack=$identifier", e)
         }
     }
 }
