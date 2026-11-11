@@ -1,5 +1,9 @@
 # StickerSwap - Geliştirici Notları & Yol Haritası (Developer Notes & Roadmap)
 
+> [!IMPORTANT]
+> **📌 Asla Değişmeyecek Madde (Sürümleme Kuralı):**
+> Her yeni sürümde `pubspec.yaml` dosyasındaki `version` sürüm numarası mutlaka bir artırılmalıdır (ör. `1.0.3` → `1.0.4`, `1.0.5` → `1.0.6`).
+
 ---
 
 ## 🇹🇷 Türkçe (Turkish)
@@ -193,6 +197,10 @@
 ---
 
 ## 🇬🇧 English (Developer Summary)
+
+> [!IMPORTANT]
+> **📌 Immutable Rule (Versioning):**
+> With every new release, the `version` number in `pubspec.yaml` must always be incremented by 1 (e.g., `1.0.3` → `1.0.4`, `1.0.5` → `1.0.6`).
 
 ### 1. App Freezing & Unresponsiveness During Initial Bulk Sticker Download & Preparation (Optimization Needed)
 - **Priority:** 🔴 **HIGH (Item 1)**
