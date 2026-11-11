@@ -125,6 +125,31 @@
   - [x] **Kapsamlı Birim Testleri:** `test/sticker_processor_isolate_test.dart` altına 22 kareli 3.0s tam süre testi ve karmaşık karelerde <= 460 KB süre korumalı sıkıştırma testleri eklendi, tüm testler başarıyla geçti.
 
 ---
+
+### 5. Hareketli Çıkartmaların Uygulama Ön İzlemesinde Tam Süre Oynarken WhatsApp'a Aktarımda Hâlâ ~1 Saniye Aktarılması (Export Pipeline Duration Truncation)
+- **Öncelik:** 🔴 **YÜKSEK (5. Öncelik - WhatsApp Aktarım Bütünlüğü)**
+- **Durum:** ⏳ **AÇIK / İNCELEME BEKLİYOR**
+- **Sorun Tanımı:**
+  - 4. maddede yapılan çalışmalar sonucunda hareketli çıkartmaların uygulama içerisindeki (frontend) ön izleme sorunu çözülmüş olup, uygulama içinde çıkartmalar tam süresiyle oynatılmaktadır.
+  - Ancak kullanıcı *"WhatsApp'a Aktar"* işlemini gerçekleştirdiğinde, WhatsApp'a aktarılan hareketli çıkartmalarda animasyonun hâlâ yalnızca ilk ~1 saniyesi aktarılmakta ve animasyon erken başa sarmaktadır.
+
+- **Gözlemlenen Mimari Farkı & İncelenecek Potansiyel Nedenler (Ön Analiz):**
+  1. **Uygulama İçi Ön İzleme ile WhatsApp Aktarım Hattının Farklı Olması:**
+     - Uygulama içi ön izlemede (`AnimatedStickerPlayer` ve `pack_preview_screen.dart`), `.webm` video çıkartmalar doğrudan `VideoPlayerController.file` ile, `.tgs` vektör çıkartmalar ise doğrudan `Lottie.memory` ile ham Telegram dosyalarından tam süresinde oynatılmaktadır.
+     - WhatsApp'a aktarımda ise dosyalar Android `MainActivity.kt` (`extractFrames`) + `StickerProcessor` (`processVideoSticker` / `processLottieSticker` -> `_createAnimatedWebpFromPngFramesSync`) hattından geçirilerek `_wa_v2.webp` formatına dönüştürülür ve `StickerContentProvider` üzerinden WhatsApp'a verilir. Bu nedenle frontend ön izlemesinin tam olması, WhatsApp'a üretilen WebP dosyasının da tam süreli üretildiğini garanti etmez.
+  2. **Olası Kök Neden — `MainActivity.kt` İçerisindeki 1 Saniyelik Fallback Yolu (`MediaMetadataRetriever`):**
+     - `MainActivity.kt` içindeki `MediaCodec` çıkarımı başarısız olduğunda veya hiç kare döndüremediğinde (`frames.isEmpty()`), devreye giren `MediaMetadataRetriever` fallback bloğu yalnızca 2 kare (`0` ve `500000L` µs) almakta ve açıkça `actualDurationMs = 1000L`, `calculatedFrameDelayMs = 500` (toplam 1.0 saniye) atamaktadır.
+  3. **Olası Kök Neden — `MediaCodec` Kare Örnekleme / Süre Okuma veya `StickerProcessor` 1 Saniyelik Güvenlik Basamağı:**
+     - `MediaCodec` döngüsünde süre/PTS (`KEY_DURATION` / `presentationTimeUs`) kaynaklı erken durma yaşanıp yaşanmadığı veya `StickerProcessor._createAnimatedWebpFromPngFramesSync` son güvenlik basamağının (`smallerCanvas.frameDuration = 500`, 2 kare = 1000 ms) boyut limiti nedeniyle devreye girip girmediği kontrol edilmelidir.
+     - Ayrıca `package:image` (`img.encodeWebP`) çıktısındaki kare gecikme sürelerinin (`frameDuration`) WhatsApp'ın yerel WebP oynatıcısı tarafından nasıl yorumlandığı ve `forceRefresh: false` / önbellek dosyalarının eski çıktıyı servis edip etmediği gerçek cihaz loglarıyla doğrulanmalıdır.
+
+- **Planlanan Adımlar (TODO):**
+  - [ ] Gerçek cihazda dışa aktarma sırasında üretilen `_wa_v2.webp` dosyalarının kare sayısını, `frameDuration` bilgisini, dosya boyutunu ve `MainActivity.kt` (`extractFrames`) dönüş değerlerini loglamak.
+  - [ ] `MediaCodec` çıkarımının `.webm` çıkartmalarda fallback'e (`1000L` ms) düşüp düşmediğini kontrol etmek ve fallback durumunda da tam süreyi kapsayan çok kareli çıkarım yapmak.
+  - [ ] `StickerProcessor` içerisindeki boyut sıkıştırma güvenlik basamaklarının animasyonu 1 saniyeye indirmesini engellemek ve üretilen WebP süresinin WhatsApp'ta tam oynadığını doğrulamak.
+  - [ ] WhatsApp'a aktarım sonrası gerçek cihaz üzerinde uçtan uca süre testi yapmak.
+
+---
 ---
 
 ## 🇬🇧 English (Developer Summary)
@@ -213,3 +238,26 @@
   - [x] **Strict Size Compliance ($\le 460\text{ KB}$):** Maintained multi-pass quality reduction (70 -> 55 -> 40 -> 25 -> 15) and duration-preserving downsampling (`currentDelay * 2`) to ensure files remain strictly under WhatsApp's decimal 500 KB limit.
   - [x] **Cache Isolation & Automatic Refresh (`_wa_v2.webp`):** Output animated stickers are named `_wa_v2.webp` and older truncated `_wa.webp` cache files are automatically purged so existing users receive full 3.0s animations.
   - [x] **Unit & Integration Tests:** Added tests in `test/sticker_processor_isolate_test.dart` for 22-frame 3.0s animations and heavy frame duration preservation, passing all test suites.
+
+---
+
+### 5. Animated Stickers Play Full Duration in App Frontend Preview but Still Export ~1 Second to WhatsApp
+- **Priority:** 🔴 **HIGH (Item 5 - WhatsApp Export Fidelity)**
+- **Status:** ⏳ **OPEN / PENDING INVESTIGATION**
+- **Issue Description:**
+  - Following the updates in Item 4, animated stickers now play at their full duration in the app's frontend preview.
+  - However, when exporting to WhatsApp (*"Export to WhatsApp"*), the transferred animated stickers still play for only ~1 second before looping prematurely.
+
+- **Observed Pipeline Difference & Suspected Areas to Investigate (Pre-Analysis):**
+  1. **Frontend Preview vs. WhatsApp Export Pipeline Split:**
+     - In-app preview (`AnimatedStickerPlayer` and `pack_preview_screen.dart`) plays raw `.webm` files via `VideoPlayerController.file` and raw `.tgs` files via `Lottie.memory` directly from Telegram.
+     - WhatsApp export converts stickers into `_wa_v2.webp` through `MainActivity.kt` (`extractFrames`) + `StickerProcessor` (`processVideoSticker` / `processLottieSticker` -> `_createAnimatedWebpFromPngFramesSync`) and serves them via `StickerContentProvider`. Therefore, a full-length frontend preview does not guarantee the exported WebP file preserves full duration.
+  2. **Potential Root Cause — 1-Second `MediaMetadataRetriever` Fallback in `MainActivity.kt`:**
+     - When `MediaCodec` extraction fails or returns `frames.isEmpty()`, the `MediaMetadataRetriever` fallback only captures 2 frames (`0` and `500000L` µs) and hardcodes `actualDurationMs = 1000L` and `calculatedFrameDelayMs = 500` (1.0 second total).
+  3. **Potential Root Cause — Extraction Timing, 1s Safety Downscale Guard, or WebP Timing/Cache:**
+     - Need to verify on-device whether `MediaCodec` exits early or triggers fallback, whether `StickerProcessor._createAnimatedWebpFromPngFramesSync`'s final safety fallback (`smallerCanvas.frameDuration = 500`, 2 frames = 1000 ms) is being hit under the 460 KB cap, how WhatsApp's WebP player interprets `package:image` `img.encodeWebP` frame durations, and whether cached files (`forceRefresh: false`) are reused.
+
+- **Planned Action Items (TODO):**
+  - [ ] Log on-device `extractFrames` output (`frames.size`, `durationMs`, `frameDelayMs`) and exported `_wa_v2.webp` frame counts, durations, and byte sizes during WhatsApp export.
+  - [ ] Verify whether `.webm` (VP9/alpha) stickers fall back to `MediaMetadataRetriever` (`1000L` ms) and upgrade the fallback path to sample multi-frame full duration.
+  - [ ] Ensure `StickerProcessor` size-fallback steps preserve full duration (up to 3000 ms) instead of collapsing to 1000 ms, and verify actual playback inside WhatsApp on a physical device.
