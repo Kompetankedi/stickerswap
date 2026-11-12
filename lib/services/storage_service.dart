@@ -1,12 +1,14 @@
 import 'dart:io';
+import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/saved_pack.dart';
 import 'whatsapp_service.dart';
 
-/// Manages local persistent storage using SharedPreferences and file system.
-/// Stores bot token, publisher name, saved sticker packs, recent packs, and cache.
+/// Manages local persistent storage using SharedPreferences, secure storage, and file system.
+/// Stores bot token securely, publisher name, saved sticker packs, recent packs, and cache.
 class StorageService {
   static const String _keyBotToken = 'bot_token';
   static const String _keyPublisher = 'publisher_name';
@@ -15,7 +17,14 @@ class StorageService {
   static const String _keyTargetApp = 'target_whatsapp_app';
   static const String _keyThemeMode = 'app_theme_mode';
 
+  final FlutterSecureStorage _secureStorage;
   late SharedPreferences _prefs;
+
+  StorageService({FlutterSecureStorage? secureStorage})
+      : _secureStorage = secureStorage ??
+            const FlutterSecureStorage(
+              aOptions: AndroidOptions(encryptedSharedPreferences: true),
+            );
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -30,13 +39,49 @@ class StorageService {
   }
 
   // ─── Bot Token ────────────────────────────────────────────
-  String? getBotToken() => _prefs.getString(_keyBotToken);
+  Future<String?> getBotToken() async {
+    try {
+      final token = await _secureStorage.read(key: _keyBotToken);
+      if (token != null && token.trim().isNotEmpty) {
+        if (_prefs.containsKey(_keyBotToken)) {
+          await _prefs.remove(_keyBotToken);
+        }
+        return token;
+      }
+
+      final legacyToken = _prefs.getString(_keyBotToken);
+      if (legacyToken != null && legacyToken.trim().isNotEmpty) {
+        final trimmed = legacyToken.trim();
+        await _secureStorage.write(key: _keyBotToken, value: trimmed);
+        await _prefs.remove(_keyBotToken);
+        return trimmed;
+      }
+    } on MissingPluginException {
+      return _prefs.getString(_keyBotToken);
+    } on PlatformException {
+      return null;
+    }
+
+    return null;
+  }
 
   Future<void> setBotToken(String token) async {
-    await _prefs.setString(_keyBotToken, token);
+    try {
+      await _secureStorage.write(key: _keyBotToken, value: token.trim());
+    } on MissingPluginException {
+      // Ignore when running widget tests without secure storage plugin registration.
+    }
+    await _prefs.remove(_keyBotToken);
   }
 
   Future<void> clearBotToken() async {
+    try {
+      await _secureStorage.delete(key: _keyBotToken);
+    } on MissingPluginException {
+      // Ignore when running widget tests without secure storage plugin registration.
+    } on PlatformException {
+      // Still clear legacy prefs even if keystore deletion fails.
+    }
     await _prefs.remove(_keyBotToken);
   }
 

@@ -66,10 +66,6 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
 
   Future<void> _initAndLoad() async {
     await _storageService.init();
-    final savedToken = _storageService.getBotToken();
-    if (savedToken != null && savedToken.isNotEmpty) {
-      _telegramService.setBotToken(savedToken);
-    }
     if (widget.stickerSet.stickers.isNotEmpty) {
       _activePreviewSticker = widget.stickerSet.stickers.first;
     }
@@ -77,6 +73,10 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
       setState(() {
         _defaultPublisher = _storageService.getPublisherName();
       });
+    }
+    final savedToken = await _storageService.getBotToken();
+    if (savedToken != null && savedToken.isNotEmpty) {
+      _telegramService.setBotToken(savedToken);
     }
     _loadThumbnails();
   }

@@ -48,7 +48,7 @@ class HomeScreenState extends State<HomeScreen> {
 
   Future<void> _initStorage() async {
     await _storageService.init();
-    final savedToken = _storageService.getBotToken();
+    final savedToken = await _storageService.getBotToken();
     if (savedToken != null && savedToken.isNotEmpty) {
       _telegramService.setBotToken(savedToken);
     }
