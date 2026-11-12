@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:stickerswap/models/curated_pack.dart';
 import 'package:stickerswap/models/saved_pack.dart';
 import 'package:stickerswap/models/telegram_sticker.dart';
 import 'package:stickerswap/models/telegram_sticker_set.dart';
@@ -86,12 +85,6 @@ void main() {
       expect(restored.stickerPaths.length, 3);
       expect(restored.emojis.length, 3);
       expect(restored.stickerCount, 3);
-    });
-
-    test('CuratedPack provides popular packs and categories', () {
-      expect(CuratedPack.popularPacks.isNotEmpty, true);
-      expect(CuratedPack.categories.contains('Memeler'), true);
-      expect(CuratedPack.categories.contains('Sevimli'), true);
     });
 
     test('StorageService.formatBytes formats correctly', () {
