@@ -64,22 +64,22 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 > **Önerilen Branch'ler:** `docs/readme-and-token-onboarding`, `fix/release-log-hygiene`
 
 ### 1.1 `README.md` ve Kullanıcı Bilgilendirmesi
-- [ ] `README.md` içindeki *"Uygulama hazır olarak gelir"* ifadesini kaldır; Telegram Bot Token'ın neden gerekli olduğunu ve @BotFather ile ~1 dakikada nasıl alınacağını net şekilde açıkla.
-- [ ] Platform destek tablosunu güncelle (Android: Tam Destek; iOS: Önizleme aktif, WhatsApp doğrudan aktarım geliştirme aşamasında).
-- [ ] `CuratedPack` UI'da henüz aktif değilse README'deki ifadeyi güncel duruma göre düzelt (veya Faz 3.2 ile birlikte senkronize et).
-- [ ] İlk açılışta/link aramada token tanımlı değilse kullanıcıya kırmızı hata yerine dostane "İlk Kurulum / Token Ekle" yönlendirmesi (banner/sheet) ekle.
-- [ ] Örnek commit: `docs(readme): clarify bot token requirement and platform support`
+- [x] `README.md` içindeki *"Uygulama hazır olarak gelir"* ifadesini kaldır; Telegram Bot Token'ın neden gerekli olduğunu ve @BotFather ile ~1 dakikada nasıl alınacağını net şekilde açıkla.
+- [x] Platform destek tablosunu güncelle (Android: Tam Destek; iOS: Önizleme aktif, WhatsApp doğrudan aktarım geliştirme aşamasında).
+- [x] `CuratedPack` UI'da henüz aktif değilse README'deki ifadeyi güncel duruma göre düzelt (veya Faz 3.2 ile birlikte senkronize et).
+- [x] İlk açılışta/link aramada token tanımlı değilse kullanıcıya kırmızı hata yerine dostane "İlk Kurulum / Token Ekle" yönlendirmesi (banner/sheet) ekle.
+- [x] Örnek commit: `docs(readme): clarify bot token requirement and platform support`
 
 ### 1.2 Canlı Kod Log Hijyeni (Debug Guards & ProGuard/R8)
-- [ ] `MainActivity.kt`, `WhatsAppMethodHandler.kt`, `StickerContentProvider.kt` ve `StickerPackStorage.kt` içindeki `Log.d` / `Log.i` / `Log.v` çağrılarını `BuildConfig.DEBUG` korumasına al (hassas dosya yolu/hash sızıntısını önle).
-- [ ] Android release yapılandırması (`proguard-rules.pro`) için `android.util.Log` debug/info/verbose stripping kurallarını ekle.
-- [ ] Dart dosyalarındaki çıplak `print` çağrılarını temizle; yalnızca `kDebugMode` kontrollü `debugPrint` kullan.
-- [ ] Örnek commit: `fix(logging): guard native and dart debug logs in release builds`
+- [x] `MainActivity.kt`, `WhatsAppMethodHandler.kt`, `StickerContentProvider.kt` ve `StickerPackStorage.kt` içindeki `Log.d` / `Log.i` / `Log.v` çağrılarını `BuildConfig.DEBUG` korumasına al (hassas dosya yolu/hash sızıntısını önle).
+- [x] Android release yapılandırması (`proguard-rules.pro`) için `android.util.Log` debug/info/verbose stripping kurallarını ekle.
+- [x] Dart dosyalarındaki çıplak `print` çağrılarını temizle; yalnızca `kDebugMode` kontrollü `debugPrint` kullan.
+- [x] Örnek commit: `fix(logging): guard native and dart debug logs in release builds`
 
 ### Faz 1 Çıkış Kriteri
-- [ ] `flutter analyze --fatal-infos` ve `flutter test` geçti.
-- [ ] Release modda hassas yol/token/hash loglarının düşmediği doğrulandı.
-- [ ] Branch'ler `develop` içine merge edildi.
+- [x] `flutter analyze --fatal-infos` ve `flutter test` geçti.
+- [x] Release modda hassas yol/token/hash loglarının düşmediği doğrulandı (`flutter build apk --release` + `BuildConfig.DEBUG` + ProGuard/R8 kuralları).
+- [x] Branch'ler `develop` içine merge edildi.
 
 ---
 
@@ -179,9 +179,9 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 ---
 
 ## 📌 Hızlı İlerleme Özeti
-- [ ] **Hazırlık:** `develop` branch açıldı
-- [ ] **Faz 0 (P0):** Güvenlik, analiz ve repo temizliği tamamlandı
-- [ ] **Faz 1 (P1):** README ve log hijyeni tamamlandı
+- [x] **Hazırlık:** `develop` branch açıldı
+- [ ] **Faz 0 (P0):** Güvenlik, analiz ve repo temizliği tamamlandı *(kod & build tamam; canlı cihaz doğrulaması beklemede)*
+- [x] **Faz 1 (P1):** README ve log hijyeni tamamlandı
 - [ ] **Faz 2 (P1):** God Screen parçalandı ve native thread/codec sertleştirildi
 - [ ] **Faz 3 (P2):** Pre-flight validator, CuratedPack UI, yasal uyarı ve iOS fallback tamamlandı
 - [ ] **Faz 4 (P2):** Mock API testleri, Android testleri, CI ve `v1.0.7` etiketi tamamlandı
