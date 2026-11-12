@@ -120,25 +120,25 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 > **Önerilen Branch'ler:** `feat/preflight-validator`, `feat/curated-packs-ui`, `feat/legal-and-ios-fallback`
 
 ### 3.1 WhatsApp Ön Doğrulama Sigortası (`StickerPreFlightValidator`)
-- [ ] `lib/services/sticker_pre_flight_validator.dart` (veya uygun servis modülü) oluştur: boyut (<= sınır), kare sayısı, animasyon süresi (<= 3000 ms), boyutlandırma (512x512) ve emoji kurallarını aktarım öncesi denetle.
-- [ ] Sorunlu çıkartma varsa tüm paketin WhatsApp tarafından reddedilmesini beklemeden kullanıcıya seçenek sun (sorunlu çıkartmayı hariç tut / yeniden sıkıştır).
-- [ ] Örnek commit: `feat(whatsapp): add StickerPreFlightValidator before export intent`
+- [x] `lib/services/sticker_pre_flight_validator.dart` (veya uygun servis modülü) oluştur: boyut (<= sınır), kare sayısı, animasyon süresi (<= 3000 ms), boyutlandırma (512x512) ve emoji kurallarını aktarım öncesi denetle.
+- [x] Sorunlu çıkartma varsa tüm paketin WhatsApp tarafından reddedilmesini beklemeden kullanıcıya seçenek sun (sorunlu çıkartmayı hariç tut / yeniden sıkıştır).
+- [x] Örnek commit: `feat(whatsapp): add StickerPreFlightValidator before export intent`
 
 ### 3.2 `CuratedPack` Özelliğinin UI'a Bağlanması
-- [ ] `lib/models/curated_pack.dart` modellerini `lib/screens/home_screen.dart` üzerinde "Popüler ve Trend Paketler" yatay kaydırma listesi olarak göster.
-- [ ] Kart tıklamasında paket kısa adını/linkini doğrudan arama akışına bağla.
-- [ ] `README.md` açıklamasının bu özellik ile birebir örtüştüğünden emin ol.
-- [ ] Örnek commit: `feat(home): surface CuratedPack popular packs carousel on home screen`
+- [x] `lib/models/curated_pack.dart` modellerini `lib/screens/home_screen.dart` üzerinde "Popüler ve Trend Paketler" yatay kaydırma listesi olarak göster.
+- [x] Kart tıklamasında paket kısa adını/linkini doğrudan arama akışına bağla.
+- [x] `README.md` açıklamasının bu özellik ile birebir örtüştüğünden emin ol.
+- [x] Örnek commit: `feat(home): surface CuratedPack popular packs carousel on home screen`
 
 ### 3.3 Hukuki Sorumluluk Reddi & iOS Çökme Koruması
-- [ ] `lib/screens/settings_screen.dart` (ve gerekirse ilk kurulum akışı) içine telif hakları, bağımsız araç sorumluluk reddi (Telegram/WhatsApp ile resmi bağ olmadığı) ve kullanım bilgilendirmesi bölümü ekle.
-- [ ] `lib/services/whatsapp_service.dart` / UI tarafında iOS platformu algılandığında `MissingPluginException` fırlatmak yerine kullanıcıya *"StickerSwap yalnızca Android için geliştirilmektedir; iOS WhatsApp aktarımı desteklenmemektedir"* bilgilendirme diyaloğu göster.
-- [ ] Örnek commit: `feat(compliance): add legal disclaimer in settings and safe iOS export fallback`
+- [x] `lib/screens/settings_screen.dart` (ve gerekirse ilk kurulum akışı) içine telif hakları, bağımsız araç sorumluluk reddi (Telegram/WhatsApp ile resmi bağ olmadığı) ve kullanım bilgilendirmesi bölümü ekle.
+- [x] `lib/services/whatsapp_service.dart` / UI tarafında iOS platformu algılandığında `MissingPluginException` fırlatmak yerine kullanıcıya *"StickerSwap yalnızca Android için geliştirilmektedir; iOS WhatsApp aktarımı desteklenmemektedir"* bilgilendirme diyaloğu göster.
+- [x] Örnek commit: `feat(compliance): add legal disclaimer in settings and safe iOS export fallback`
 
 ### Faz 3 Çıkış Kriteri
-- [ ] `flutter analyze --fatal-infos` ve `flutter test` geçti.
-- [ ] `CuratedPack` akışı, pre-flight doğrulama senaryoları ve yasal metin UI üzerinde kontrol edildi.
-- [ ] Branch'ler `develop` içine merge edildi.
+- [x] `flutter analyze --fatal-infos` ve `flutter test` geçti.
+- [x] `CuratedPack` akışı, pre-flight doğrulama senaryoları ve yasal metin UI üzerinde kontrol edildi. *(Widget & birim testleri ile doğrulandı)*
+- [x] Branch'ler `develop` içine merge edildi. (`feat/preflight-validator`, `feat/curated-packs-ui`, `feat/legal-and-ios-fallback`)
 
 ---
 
@@ -183,6 +183,6 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 - [ ] **Faz 0 (P0):** Güvenlik, analiz ve repo temizliği tamamlandı *(kod & build tamam; canlı cihaz doğrulaması beklemede)*
 - [x] **Faz 1 (P1):** README ve log hijyeni tamamlandı
 - [ ] **Faz 2 (P1):** God Screen parçalandı ve native thread/codec sertleştirildi *(kod, test & APK build tamam; fiziksel cihaz testi beklemede)*
-- [ ] **Faz 3 (P2):** Pre-flight validator, CuratedPack UI, yasal uyarı ve iOS fallback tamamlandı
+- [x] **Faz 3 (P2):** Pre-flight validator, CuratedPack UI, yasal uyarı ve iOS fallback tamamlandı
 - [ ] **Faz 4 (P2):** Mock API testleri, Android testleri, CI ve `v1.0.7` etiketi tamamlandı
 
