@@ -124,11 +124,9 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 - [x] Sorunlu çıkartma varsa tüm paketin WhatsApp tarafından reddedilmesini beklemeden kullanıcıya seçenek sun (sorunlu çıkartmayı hariç tut / yeniden sıkıştır).
 - [x] Örnek commit: `feat(whatsapp): add StickerPreFlightValidator before export intent`
 
-### 3.2 `CuratedPack` Özelliğinin UI'a Bağlanması
-- [x] `lib/models/curated_pack.dart` modellerini `lib/screens/home_screen.dart` üzerinde "Popüler ve Trend Paketler" yatay kaydırma listesi olarak göster.
-- [x] Kart tıklamasında paket kısa adını/linkini doğrudan arama akışına bağla.
-- [x] `README.md` açıklamasının bu özellik ile birebir örtüştüğünden emin ol.
-- [x] Örnek commit: `feat(home): surface CuratedPack popular packs carousel on home screen`
+### 3.2 `CuratedPack` Özelliğinin UI'a Bağlanması *(Daha Sonra Kaldırıldı)*
+- [x] `lib/models/curated_pack.dart` ve `CuratedPacksCarousel` bileşeni eklendi; ardından ürün kararıyla (yalnızca kullanıcının kendi bağlantısını aktarması amacıyla) ana ekrandan ve kod tabanından tamamen kaldırıldı.
+- [x] `README.md` açıklamaları güncel duruma göre güncellendi.
 
 ### 3.3 Hukuki Sorumluluk Reddi & iOS Çökme Koruması
 - [x] `lib/screens/settings_screen.dart` (ve gerekirse ilk kurulum akışı) içine telif hakları, bağımsız araç sorumluluk reddi (Telegram/WhatsApp ile resmi bağ olmadığı) ve kullanım bilgilendirmesi bölümü ekle.

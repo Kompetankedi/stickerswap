@@ -6,7 +6,6 @@ import '../theme/theme_controller.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/bot_token_guide_sheet.dart';
-import '../widgets/curated_packs_carousel.dart';
 import '../services/telegram_service.dart';
 import '../services/storage_service.dart';
 import 'pack_preview_screen.dart';
@@ -544,20 +543,9 @@ class HomeScreenState extends State<HomeScreen> {
                 ),
               ).animate().fadeIn(delay: 300.ms, duration: 400.ms),
 
-              const SizedBox(height: 22),
-
-              // ─── Popular & Trending Curated Packs ────────
-              CuratedPacksCarousel(
-                onPackSelected: (pack) {
-                  _linkController.text = pack.name;
-                  setState(() => _errorMessage = null);
-                  _fetchStickerPack(pack.name);
-                },
-              ).animate().fadeIn(delay: 320.ms, duration: 400.ms),
-
               // ─── Recent Searches Chips ─────────────────────
               if (_recentPacks.isNotEmpty) ...[
-                const SizedBox(height: 20),
+                const SizedBox(height: 22),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
