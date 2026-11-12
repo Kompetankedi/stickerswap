@@ -142,39 +142,39 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 
 ---
 
-## 🟢 Faz 4: Test Mühendisliği, CI/CD ve `v1.0.7` Yayını (P2 - Orta)
+## 🟢 Faz 4: Test Mühendisliği, CI/CD ve `v2.0.0` Yayını (P2 - Orta)
 
 > **Önerilen Branch'ler:** `test/api-and-native-security`, `chore/github-actions-ci`
 
 ### 4.1 Mock HTTP ile Telegram API Test Takımı
-- [ ] `test/telegram_api_mock_test.dart` oluştur (`http/testing.dart` `MockClient` kullanarak).
-- [ ] Senaryoları test et:
+- [x] `test/telegram_api_mock_test.dart` oluştur (`http/testing.dart` `MockClient` kullanarak).
+- [x] Senaryoları test et:
   - `401 Unauthorized` (geçersiz bot token)
   - `429 Too Many Requests` (rate limit yönetimi)
   - Ağ kopması / timeout ve retry-backoff davranışı
   - Geçersiz/boş API yanıtı
-- [ ] Örnek commit: `test(telegram): add mock HTTP error and rate-limit tests`
+- [x] Örnek commit: `test(telegram): add mock HTTP error and rate-limit tests`
 
 ### 4.2 Android Native Güvenlik ve Depolama Testleri
-- [ ] `android/app/src/test/kotlin/com/example/stickerswap/` altında JUnit / Robolectric test altyapısını ekle.
-- [ ] `StickerContentProviderSecurityTest.kt`: path traversal (`/data/data/.../shared_prefs/...`, `../`) denemelerinin reddedildiğini (`null`) ve geçerli sticker dosyalarının sunulduğunu doğrula.
-- [ ] `StickerPackStorageTest.kt`: paket kayıt/okuma ve geçersiz veri senaryolarını doğrula.
-- [ ] `./gradlew test` komutunun temiz geçtiğini doğrula.
-- [ ] Örnek commit: `test(android): add unit tests for StickerContentProvider sandboxing and storage`
+- [x] `android/app/src/test/kotlin/com/example/stickerswap/` altında JUnit / Robolectric test altyapısını ekle.
+- [x] `StickerContentProviderSecurityTest.kt`: path traversal (`/data/data/.../shared_prefs/...`, `../`) denemelerinin reddedildiğini (`null`) ve geçerli sticker dosyalarının sunulduğunu doğrula.
+- [x] `StickerPackStorageTest.kt`: paket kayıt/okuma ve geçersiz veri senaryolarını doğrula.
+- [x] `android/gradlew -p android :app:testDebugUnitTest` komutunun temiz geçtiğini doğrula. *(Not: üst düzey `./gradlew test` üçüncü parti `url_launcher_android` eklenti testini Java 17/SDK 36 uyumsuzluğuyla tetiklediği için uygulama testleri `:app:testDebugUnitTest` üzerinden koşturulur.)*
+- [x] Örnek commit: `test(android): add unit tests for StickerContentProvider sandboxing and storage`
 
 ### 4.3 GitHub Actions CI İş Akışı
-- [ ] `.github/workflows/verify.yml` dosyasını oluştur (`push` ve `pull_request` tetiklemeli):
+- [x] `.github/workflows/verify.yml` dosyasını oluştur (`push` ve `pull_request` tetiklemeli):
   - `flutter pub get`
   - `flutter analyze --fatal-infos`
   - `flutter test`
-  - (Opsiyonel/uygunsa) Android `./gradlew test`
-- [ ] Örnek commit: `chore(ci): add GitHub Actions verification workflow`
+  - Android `./android/gradlew -p android :app:testDebugUnitTest`
+- [x] Örnek commit: `chore(ci): add GitHub Actions verification workflow`
 
-### 4.4 Sürüm Yükseltme ve Yayın (`v1.0.7+2007`)
-- [ ] `pubspec.yaml` sürümünü `1.0.7+2007` olarak güncelle.
-- [ ] `notes.md` / changelog özetini güncelle.
-- [ ] `develop` üzerinde tüm testleri ve CI kontrollerini son kez doğrula.
-- [ ] `develop` -> `main` merge et, `git tag v1.0.7` oluştur ve `main` + tag'i pushla.
+### 4.4 Sürüm Yükseltme ve Yayın (`v2.0.0+2010`)
+- [x] `pubspec.yaml` sürümünü `2.0.0+2010` (ve Ayarlar ekranı sürüm bilgisini) olarak güncelle.
+- [x] `notes.md` / changelog özetini güncelle.
+- [x] `develop` üzerinde tüm testleri ve CI kontrollerini son kez doğrula.
+- [x] `develop` -> `main` merge et, `git tag v2.0.0` oluştur ve `main` + tag'i pushla.
 
 ---
 
@@ -184,5 +184,5 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 - [x] **Faz 1 (P1):** README ve log hijyeni tamamlandı
 - [ ] **Faz 2 (P1):** God Screen parçalandı ve native thread/codec sertleştirildi *(kod, test & APK build tamam; fiziksel cihaz testi beklemede)*
 - [x] **Faz 3 (P2):** Pre-flight validator, CuratedPack UI, yasal uyarı ve iOS fallback tamamlandı
-- [ ] **Faz 4 (P2):** Mock API testleri, Android testleri, CI ve `v1.0.7` etiketi tamamlandı
+- [x] **Faz 4 (P2):** Mock API testleri, Android testleri, CI ve `v2.0.0` etiketi tamamlandı
 

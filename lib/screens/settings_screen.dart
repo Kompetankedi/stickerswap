@@ -890,7 +890,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     _AboutRow(
                       label: 'Sürüm',
-                      value: '1.0.1+2',
+                      value: '2.0.0+2010',
                       textCol: textCol,
                       secCol: secCol,
                     ),

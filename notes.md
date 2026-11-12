@@ -351,3 +351,13 @@
   - [x] **Rename Support in `My Packs` (`MyPacksScreen`):** Added `SavedPack.copyWith`, `StorageService.updatePackName`, card edit button, `"Save & Add"` flow, and installed-pack identifier prompt.
   - [x] **Unit & Widget Tests:** Added tests in `test/whatsapp_service_test.dart` and `test/pack_customization_test.dart` (`flutter test`: `37/37` passed; `flutter analyze --no-fatal-infos` clean).
   - [x] **On-Device Verification:** Tested live by user on **Redmi Note 12 Pro 4G** (`crDroid 12.13` / `Android 16 QPR2`) and confirmed working smoothly.
+
+---
+
+### 7. v2.0.0 (`2.0.0+2010`) — Production Hardening, Modular Architecture, Pre-Flight Validation & CI (Faz 0–4)
+- **Status:** ✅ **RELEASED ON `main` (`v2.0.0`)**
+- **Summary of Changes Across Faz 0–4:**
+  - **Security & Build Hardening (Faz 0–1):** Added `characters` dependency (`flutter analyze --fatal-infos` clean), sandboxed `StickerContentProvider` against path traversal (`/shared_prefs`, `/databases`, `/no_backup`), removed plain HTTP fallback and enabled R8 minification + resource shrinking, guarded debug logs under `kDebugMode` / `BuildConfig.DEBUG`, and clarified Android-only platform scope in `README.md`.
+  - **Modular UI & Native Stability (Faz 2):** Decomposed `PackPreviewScreen` into `StickerExportOrchestrator`, `LiveHeroPreview`, `StickerSelectionGrid`, and `ExportProgressSheet`; replaced raw `Thread { }.start()` spawns in `MainActivity.kt` with a bounded 3-thread `ExecutorService` cleared in `onDestroy()`; added a `1500 ms` `MediaCodec` watchdog fallback to software decoding and hardened YUV/NV21 stride handling.
+  - **WhatsApp Pre-Flight Assurance, Discovery & Compliance (Faz 3):** Added `StickerPreFlightValidator` + recovery dialog (`runPreFlightValidationGate`) and `StickerProcessor.recompressWebpSticker` before export intents; surfaced `CuratedPack` horizontal carousel (`CuratedPacksCarousel`) on `HomeScreen`; added legal/copyright disclaimers in `SettingsScreen` + setup flow and safe iOS unsupported-platform dialog (`WhatsAppExportStatus.unsupportedPlatform`).
+  - **Test Engineering & CI (Faz 4):** Added `MockClient` HTTP error/rate-limit/retry tests (`test/telegram_api_mock_test.dart`), Robolectric + JUnit security/storage tests (`StickerContentProviderSecurityTest.kt`, `StickerPackStorageTest.kt`), and `.github/workflows/verify.yml`. Bumped app version to **`2.0.0+2010`**.
