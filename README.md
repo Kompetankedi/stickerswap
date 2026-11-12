@@ -33,6 +33,7 @@
 * 🚀 **Tek Tıkla Aktarım:** Çıkartma paketini getirin, istediğiniz çıkartmaları seçin ve **"WhatsApp'a Ekle"** butonuna dokunun.
 * 🎬 **Tüm Çıkartma Türleri:** Sabit görseller, hareketli Lottie animasyonları (`.tgs`) ve video çıkartmalarını (`.webm`) WhatsApp uyumlu WebP formatına dönüştürür.
 * 🔗 **Kolay Paylaşım:** Telegram'da bir paketi "Paylaş" deyip doğrudan **StickerSwap**'ı seçebilir veya bağlantıyı yapıştırabilirsiniz.
+* 🔥 **Popüler ve Trend Paketler:** Ana ekrandaki küratörlü popüler paketler karuselinden kategoriye göre keşfedip tek dokunuşla paketi getirebilirsiniz.
 * ✏️ **Özelleştirme ve Kayıtlı Paketler:** Aktarım öncesi paket/yayıncı adını düzenleyin, 30'dan büyük paketleri otomatik bölün ve son aramalarınıza hızlıca erişin.
 * 🔒 **Tamamen Gizli ve Güvenli:** Merkezi bir ara sunucu kullanılmaz. Tüm indirme ve dönüştürme işlemleri telefonunuzda yapılır; Bot Token'ınız cihazın güvenli deposunda (Android Keystore) şifrelenerek saklanır.
 
@@ -89,6 +90,7 @@ flowchart LR
 * 🚀 **One-Tap Export:** Fetch any Telegram pack, pick your stickers, and tap **"Add to WhatsApp"**.
 * 🎬 **Full Format Support:** Converts static stickers, vector animations (`.tgs`), and video stickers (`.webm`) into WhatsApp-compliant WebP packs.
 * 🔗 **Quick Share Integration:** Tap "Share" on any sticker pack inside Telegram and choose **StickerSwap**, or paste the link directly.
+* 🔥 **Popular & Trending Packs:** Browse curated popular packs directly on the home screen and load any pack into search with a single tap.
 * ✏️ **Customization & Saved Packs:** Edit pack/publisher names before export, auto-split packs larger than 30 stickers, and revisit recent searches.
 * 🔒 **Privacy First:** No third-party backend or proxy server is used. All processing runs locally on your phone, and your Bot Token is encrypted in native secure storage (Android Keystore).
 
