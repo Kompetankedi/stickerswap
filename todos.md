@@ -88,30 +88,30 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 > **Önerilen Branch'ler:** `refactor/pack-preview-screen`, `fix/native-threadpool-and-codec`
 
 ### 2.1 `pack_preview_screen.dart` (2257 Satır) Parçalanması & State Management
-- [ ] İş mantığı, indirme kuyruğu, isolate havuzu ve çok parçalı bölme akışını `lib/services/sticker_export_orchestrator.dart` (`ChangeNotifier` tabanlı) içine taşı.
-- [ ] Seçili çıkartma canlı oynatıcısını `lib/widgets/live_hero_preview.dart` dosyasına çıkar.
-- [ ] Izgara görünümü, çoklu seçim ve 1–30 limit/rozet yönetimini `lib/widgets/sticker_selection_grid.dart` dosyasına çıkar.
-- [ ] İlerleme çubuğu, yüzde ve iptal kontrolünü `lib/widgets/export_progress_sheet.dart` dosyasına çıkar.
-- [ ] `lib/screens/pack_preview_screen.dart` dosyasını sadece ekran iskeleti ve bileşen orkestrasyonuna indirge.
-- [ ] Kontrolsüz `setState()` çağrıları yerine `ChangeNotifier` / `ValueNotifier` (veya belirlenecek state management) ile yalnızca ilgili alt widget'ların yeniden çizilmesini sağla.
-- [ ] Örnek commit: `refactor(preview): split PackPreviewScreen into orchestrator and modular widgets`
+- [x] İş mantığı, indirme kuyruğu, isolate havuzu ve çok parçalı bölme akışını `lib/services/sticker_export_orchestrator.dart` (`ChangeNotifier` tabanlı) içine taşı.
+- [x] Seçili çıkartma canlı oynatıcısını `lib/widgets/live_hero_preview.dart` dosyasına çıkar.
+- [x] Izgara görünümü, çoklu seçim ve 1–30 limit/rozet yönetimini `lib/widgets/sticker_selection_grid.dart` dosyasına çıkar.
+- [x] İlerleme çubuğu, yüzde ve iptal kontrolünü `lib/widgets/export_progress_sheet.dart` dosyasına çıkar.
+- [x] `lib/screens/pack_preview_screen.dart` dosyasını sadece ekran iskeleti ve bileşen orkestrasyonuna indirge.
+- [x] Kontrolsüz `setState()` çağrıları yerine `ChangeNotifier` / `ValueNotifier` (veya belirlenecek state management) ile yalnızca ilgili alt widget'ların yeniden çizilmesini sağla.
+- [x] Örnek commit: `refactor(preview): split PackPreviewScreen into orchestrator and modular widgets`
 
 ### 2.2 Android Native Thread Havuzu (`MainActivity.kt`)
-- [ ] `android/app/src/main/kotlin/com/example/stickerswap/MainActivity.kt` içindeki kontrolsüz `Thread { }.start()` çağrılarını kaldır.
-- [ ] Sabit boyutlu `private val mediaExecutor: ExecutorService = Executors.newFixedThreadPool(3)` tanımla.
-- [ ] `extractFrames` ve `compressStaticWebP` çağrılarını `mediaExecutor.execute { ... }` üzerinden çalıştır, sonuçları `runOnUiThread` ile döndür.
-- [ ] `onDestroy()` içinde `mediaExecutor.shutdownNow()` çağırarak zombie thread sızıntısını önle.
-- [ ] Örnek commit: `refactor(android): replace raw Thread spawns with fixed ExecutorService pool`
+- [x] `android/app/src/main/kotlin/com/example/stickerswap/MainActivity.kt` içindeki kontrolsüz `Thread { }.start()` çağrılarını kaldır.
+- [x] Sabit boyutlu `private val mediaExecutor: ExecutorService = Executors.newFixedThreadPool(3)` tanımla.
+- [x] `extractFrames` ve `compressStaticWebP` çağrılarını `mediaExecutor.execute { ... }` üzerinden çalıştır, sonuçları `runOnUiThread` ile döndür.
+- [x] `onDestroy()` içinde `mediaExecutor.shutdownNow()` çağırarak zombie thread sızıntısını önle.
+- [x] Örnek commit: `refactor(android): replace raw Thread spawns with fixed ExecutorService pool`
 
 ### 2.3 MediaCodec Kararlılığı (VP9 Timeout & NV21 Stride)
-- [ ] `MainActivity.kt` içindeki `dequeueOutputBuffer` döngüsüne ~1.5 saniyelik watchdog timeout ekle; kilitlenme durumunda yazılımsal decoder'a (`preferSoftware = true`) düş.
-- [ ] `imageToNv21` ve `rawYuvToNv21` fonksiyonlarında `rowStride` ve `pixelStride` hizalamalarını gözden geçirip cihaz/yonga seti kaynaklı yeşil çizgi / renk kayması risklerini düzelt.
-- [ ] Örnek commit: `fix(media): add VP9 decoder watchdog timeout and harden YUV stride handling`
+- [x] `MainActivity.kt` içindeki `dequeueOutputBuffer` döngüsüne ~1.5 saniyelik watchdog timeout ekle; kilitlenme durumunda yazılımsal decoder'a (`preferSoftware = true`) düş.
+- [x] `imageToNv21` ve `rawYuvToNv21` fonksiyonlarında `rowStride` ve `pixelStride` hizalamalarını gözden geçirip cihaz/yonga seti kaynaklı yeşil çizgi / renk kayması risklerini düzelt.
+- [x] Örnek commit: `fix(media): add VP9 decoder watchdog timeout and harden YUV stride handling`
 
 ### Faz 2 Çıkış Kriteri
-- [ ] `flutter analyze --fatal-infos` ve `flutter test` geçti.
-- [ ] Fiziksel Android cihazda animasyonlu (`.tgs` ve `.webm`) + statik paket aktarımı, iptal ve ardışık paket açma/kapama test edildi.
-- [ ] Branch'ler `develop` içine merge edildi.
+- [x] `flutter analyze --fatal-infos` ve `flutter test` geçti. (Ayrıca `flutter build apk --debug` ve `flutter build apk --release` geçti.)
+- [ ] Fiziksel Android cihazda animasyonlu (`.tgs` ve `.webm`) + statik paket aktarımı, iptal ve ardışık paket açma/kapama test edildi. *(Bağlı fiziksel Android cihaz yok — canlı cihaz testi bekliyor)*
+- [x] Branch'ler `develop` içine merge edildi. (`refactor/pack-preview-screen`, `fix/native-threadpool-and-codec`)
 
 ---
 
@@ -182,7 +182,7 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 - [x] **Hazırlık:** `develop` branch açıldı
 - [ ] **Faz 0 (P0):** Güvenlik, analiz ve repo temizliği tamamlandı *(kod & build tamam; canlı cihaz doğrulaması beklemede)*
 - [x] **Faz 1 (P1):** README ve log hijyeni tamamlandı
-- [ ] **Faz 2 (P1):** God Screen parçalandı ve native thread/codec sertleştirildi
+- [ ] **Faz 2 (P1):** God Screen parçalandı ve native thread/codec sertleştirildi *(kod, test & APK build tamam; fiziksel cihaz testi beklemede)*
 - [ ] **Faz 3 (P2):** Pre-flight validator, CuratedPack UI, yasal uyarı ve iOS fallback tamamlandı
 - [ ] **Faz 4 (P2):** Mock API testleri, Android testleri, CI ve `v1.0.7` etiketi tamamlandı
 
