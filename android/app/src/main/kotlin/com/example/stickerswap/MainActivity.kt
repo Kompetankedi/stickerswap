@@ -23,11 +23,15 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.stickerswap/share"
     private val VIDEO_CHANNEL = "com.example.stickerswap/video"
+    private val mediaExecutor: ExecutorService = Executors.newFixedThreadPool(3)
     private var sharedData: String? = null
     private var channel: MethodChannel? = null
     private var whatsAppHandler: WhatsAppMethodHandler? = null
@@ -86,12 +90,18 @@ class MainActivity : FlutterActivity() {
                     return@setMethodCallHandler
                 }
 
-                Thread {
-                    val response = extractVideoFrames(videoPath, targetFps, maxFrames)
-                    runOnUiThread {
-                        result.success(response)
+                executeOnMediaPool(result) {
+                    try {
+                        val response = extractVideoFrames(videoPath, targetFps, maxFrames)
+                        runOnUiThread {
+                            result.success(response)
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            result.error("VIDEO_EXTRACT_ERROR", e.message, null)
+                        }
                     }
-                }.start()
+                }
             } else if (call.method == "compressStaticWebP") {
                 val inputPath = call.argument<String>("inputPath")
                 val outputPath = call.argument<String>("outputPath")
@@ -100,12 +110,12 @@ class MainActivity : FlutterActivity() {
                     return@setMethodCallHandler
                 }
 
-                Thread {
+                executeOnMediaPool(result) {
                     try {
                         val srcBitmap = BitmapFactory.decodeFile(inputPath)
                         if (srcBitmap == null) {
                             runOnUiThread { result.error("DECODE_FAIL", "Cannot decode static sticker: $inputPath", null) }
-                            return@Thread
+                            return@executeOnMediaPool
                         }
 
                         val targetSize = 512
@@ -165,11 +175,28 @@ class MainActivity : FlutterActivity() {
                             result.error("NATIVE_COMPRESS_ERROR", e.message, null)
                         }
                     }
-                }.start()
+                }
             } else {
                 result.notImplemented()
             }
         }
+    }
+
+    private fun executeOnMediaPool(result: MethodChannel.Result, task: () -> Unit) {
+        if (isDestroyed || mediaExecutor.isShutdown) {
+            result.error("EXECUTOR_SHUTDOWN", "Media executor is unavailable", null)
+            return
+        }
+        try {
+            mediaExecutor.execute(task)
+        } catch (e: RejectedExecutionException) {
+            result.error("EXECUTOR_REJECTED", e.message ?: "Media task rejected", null)
+        }
+    }
+
+    override fun onDestroy() {
+        mediaExecutor.shutdownNow()
+        super.onDestroy()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
