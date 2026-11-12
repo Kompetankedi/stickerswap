@@ -8,6 +8,7 @@ import '../services/whatsapp_service.dart';
 import '../theme/app_theme.dart';
 import 'gradient_button.dart';
 import 'installed_pack_cache_dialog.dart';
+import 'ios_unsupported_dialog.dart';
 import 'pre_flight_dialog.dart';
 
 /// Displays real-time sticker preparation progress, percentage, and cancel control
@@ -216,6 +217,9 @@ class _MultiPartExportSheetState extends State<MultiPartExportSheet> {
         part.error = null;
         await widget.storageService.updatePackStatus(part.packId, true);
         HapticFeedback.mediumImpact();
+      } else if (result.isUnsupportedPlatform) {
+        part.isCancelled = true;
+        await showIosUnsupportedDialog(context, message: result.errorMessage);
       } else if (result.isCancelled) {
         part.isCancelled = true;
         HapticFeedback.lightImpact();
