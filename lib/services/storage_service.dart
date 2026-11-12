@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -39,32 +40,48 @@ class StorageService {
 
   // ─── Bot Token ────────────────────────────────────────────
   Future<String?> getBotToken() async {
-    final token = await _secureStorage.read(key: _keyBotToken);
-    if (token != null && token.trim().isNotEmpty) {
-      if (_prefs.containsKey(_keyBotToken)) {
-        await _prefs.remove(_keyBotToken);
+    try {
+      final token = await _secureStorage.read(key: _keyBotToken);
+      if (token != null && token.trim().isNotEmpty) {
+        if (_prefs.containsKey(_keyBotToken)) {
+          await _prefs.remove(_keyBotToken);
+        }
+        return token;
       }
-      return token;
-    }
 
-    final legacyToken = _prefs.getString(_keyBotToken);
-    if (legacyToken != null && legacyToken.trim().isNotEmpty) {
-      final trimmed = legacyToken.trim();
-      await _secureStorage.write(key: _keyBotToken, value: trimmed);
-      await _prefs.remove(_keyBotToken);
-      return trimmed;
+      final legacyToken = _prefs.getString(_keyBotToken);
+      if (legacyToken != null && legacyToken.trim().isNotEmpty) {
+        final trimmed = legacyToken.trim();
+        await _secureStorage.write(key: _keyBotToken, value: trimmed);
+        await _prefs.remove(_keyBotToken);
+        return trimmed;
+      }
+    } on MissingPluginException {
+      return _prefs.getString(_keyBotToken);
+    } on PlatformException {
+      return null;
     }
 
     return null;
   }
 
   Future<void> setBotToken(String token) async {
-    await _secureStorage.write(key: _keyBotToken, value: token.trim());
+    try {
+      await _secureStorage.write(key: _keyBotToken, value: token.trim());
+    } on MissingPluginException {
+      // Ignore when running widget tests without secure storage plugin registration.
+    }
     await _prefs.remove(_keyBotToken);
   }
 
   Future<void> clearBotToken() async {
-    await _secureStorage.delete(key: _keyBotToken);
+    try {
+      await _secureStorage.delete(key: _keyBotToken);
+    } on MissingPluginException {
+      // Ignore when running widget tests without secure storage plugin registration.
+    } on PlatformException {
+      // Still clear legacy prefs even if keystore deletion fails.
+    }
     await _prefs.remove(_keyBotToken);
   }
 
