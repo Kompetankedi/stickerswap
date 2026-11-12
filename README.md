@@ -24,48 +24,56 @@
 
 # 🇹🇷 Türkçe
 
-**StickerSwap**, Telegram'da beğendiğiniz tüm çıkartma paketlerini (sabit resimler, hareketli ve videolu çıkartmalar) doğrudan ve zahmetsizce **WhatsApp** ve **WhatsApp Business**'a eklemenizi sağlayan hızlı, modern ve kullanımı son derece kolay bir uygulamadır.
+**StickerSwap**, Telegram'da beğendiğiniz çıkartma paketlerini (statik görseller, hareketli `.tgs` ve videolu `.webm` çıkartmalar) doğrudan cihazınızda işleyerek **WhatsApp** ve **WhatsApp Business**'a aktarmanızı sağlayan açık kaynaklı, reklamsız ve gizlilik odaklı bir uygulamadır.
 
 ---
 
 ### ✨ Neler Yapabilirsiniz?
 
-* 🚀 **Tek Tıkla Aktarım:** Çıkartma paketini bulun, "WhatsApp'a Ekle" butonuna basın ve kullanmaya başlayın.
-* 🎬 **Tüm Çıkartma Türleri:** Sabit görseller, hareketli animasyonlar (.tgs) ve video çıkartmaları (.webm) destekler.
-* 🔗 **Kolay Paylaşım:** Telegram'da bir çıkartmayı "Paylaş" deyip doğrudan StickerSwap'ı seçebilir ya da bağlantıyı kopyalayıp yapıştırabilirsiniz.
-* 🌟 **Popüler Paketler Keşfi:** Ana sayfadaki trend ve popüler çıkartma paketlerini hemen keşfedin.
-* 🔒 **Tamamen Gizli ve Güvenli:** Verileriniz herhangi bir uzak sunucuya gitmez, tüm işlem telefonunuzda gerçekleşir.
+* 🚀 **Tek Tıkla Aktarım:** Çıkartma paketini getirin, istediğiniz çıkartmaları seçin ve **"WhatsApp'a Ekle"** butonuna dokunun.
+* 🎬 **Tüm Çıkartma Türleri:** Sabit görseller, hareketli Lottie animasyonları (`.tgs`) ve video çıkartmalarını (`.webm`) WhatsApp uyumlu WebP formatına dönüştürür.
+* 🔗 **Kolay Paylaşım:** Telegram'da bir paketi "Paylaş" deyip doğrudan **StickerSwap**'ı seçebilir veya bağlantıyı yapıştırabilirsiniz.
+* 🔥 **Popüler ve Trend Paketler:** Ana ekrandaki küratörlü popüler paketler karuselinden kategoriye göre keşfedip tek dokunuşla paketi getirebilirsiniz.
+* ✏️ **Özelleştirme ve Kayıtlı Paketler:** Aktarım öncesi paket/yayıncı adını düzenleyin, 30'dan büyük paketleri otomatik bölün ve son aramalarınıza hızlıca erişin.
+* 🔒 **Tamamen Gizli ve Güvenli:** Merkezi bir ara sunucu kullanılmaz. Tüm indirme ve dönüştürme işlemleri telefonunuzda yapılır; Bot Token'ınız cihazın güvenli deposunda (Android Keystore) şifrelenerek saklanır.
+
+---
+
+### 📱 Platform Desteği
+
+| Platform | Durum | Açıklama |
+| :--- | :---: | :--- |
+| **Android** | ✅ **Tam Destek** | WhatsApp & WhatsApp Business doğrudan çıkartma paketi aktarımı tam olarak desteklenir. |
+| **iOS** | ⛔ **Desteklenmiyor** | StickerSwap yalnızca **Android** odaklı geliştirilmektedir; iOS için aktif geliştirme veya destek planlanmamaktadır. |
+
+---
+
+### 🔑 Telegram Bot Token Neden Gerekli ve Nasıl Alınır? (~1 Dakika)
+
+Telegram, çıkartma paketlerinin yüksek çözünürlüklü dosyalarını yalnızca resmi **Telegram Bot API** üzerinden sunar. StickerSwap ise aradaki üçüncü parti sunuculara veri/trafik göndermeyen, **tamamen cihaz içi (sunucusuz)** bir araçtır. Bu nedenle ilk kurulumda kendi ücretsiz Telegram Bot Token'ınızı eklemeniz gerekir:
+
+1. Telegram'da **[@BotFather](https://t.me/BotFather)** sohbetini açın.
+2. `/newbot` komutunu gönderin ve botunuz için bir ad ile `...bot` ile biten bir kullanıcı adı belirleyin.
+3. BotFather'ın verdiği **HTTP API Token** değerini kopyalayın.
+4. StickerSwap uygulamasını açın; ana ekrandaki **"İlk Kurulum / Token Ekle"** yönlendirmesinden veya **Ayarlar > Telegram Bot Token** bölümünden token'ı yapıştırıp doğrulayın.
+
+> Token yalnızca Telegram API ile doğrudan cihazınız arasında kullanılır ve cihazın güvenli deposunda şifreli olarak saklanır.
 
 ---
 
 ### 🚀 Hızlı Başlangıç (Nasıl Kullanılır?)
 
-Uygulamayı kullanmak sadece birkaç saniyenizi alır:
-
 ```mermaid
 flowchart LR
-    A[1. Çıkartma Linkini Kopyala] --> B[2. StickerSwap'a Yapıştır]
-    B --> C[3. Paketi İncele]
+    A["1. @BotFather Token Ekle (1 dk)"] --> B[2. Çıkartma Linkini Yapıştır]
+    B --> C[3. Paketi Önizle ve Seç]
     C --> D[4. WhatsApp'a Ekle!]
 ```
 
-1. **Telegram'dan Çıkartmayı Seçin:** 
-   * Telegram'da beğendiğiniz paketin linkini kopyalayın (örn: `https://t.me/addstickers/paket_adi`) **veya**
-   * Çıkartma paketinde "Paylaş" diyerek doğrudan **StickerSwap** uygulamasını seçin.
-2. **Paketi Yükleyin:** Uygulama linki otomatik olarak algılar ve paketi ekranınıza getirir.
-3. **WhatsApp'a Ekleyin:** Ekranın altındaki yeşil **"WhatsApp'a Ekle"** butonuna dokunun.
-4. **Keyfini Çıkarın:** WhatsApp'ı açın, çıkartmalar sekmesine gidin ve arkadaşlarınızla paylaşmaya başlayın! 🎉
-
----
-
-### 🔑 Kendi Telegram Bot Token'ınızı Kullanma (İsteğe Bağlı)
-
-Uygulama hazır olarak gelir. Ancak kendi botunuzu bağlayarak daha hızlı ve kesintisiz çıkartma çekmek isterseniz:
-
-1. Telegram'da **[@BotFather](https://t.me/BotFather)** botunu açın.
-2. `/newbot` yazın ve talimatları takip ederek botunuza bir isim verin.
-3. Size verilen **API Token** kodunu kopyalayın.
-4. StickerSwap içinde **Ayarlar > Bot Token** alanına yapıştırın ve kaydedin.
+1. **İlk Kurulum:** Yukarıdaki adımlarla kendi ücretsiz Bot Token'ınızı uygulamaya ekleyin.
+2. **Telegram'dan Çıkartmayı Seçin:** Beğendiğiniz paketin linkini (`https://t.me/addstickers/paket_adi`) kopyalayıp yapıştırın ya da Telegram'dan **Paylaş > StickerSwap** deyin.
+3. **Paketi İnceleyin:** Çıkartmaları seçin, isterseniz paket/yayıncı adını özelleştirin.
+4. **WhatsApp'a Ekleyin:** **"WhatsApp'a Ekle"** butonuna dokunun ve WhatsApp çıkartmalar sekmesinde kullanmaya başlayın! 🎉
 
 ---
 
@@ -73,48 +81,56 @@ Uygulama hazır olarak gelir. Ancak kendi botunuzu bağlayarak daha hızlı ve k
 
 # 🇬🇧 English
 
-**StickerSwap** is a fast, clean, and modern app that allows you to effortlessly transfer any Telegram sticker pack—static, animated, or video—directly into **WhatsApp** and **WhatsApp Business**.
+**StickerSwap** is an open-source, privacy-first app that converts Telegram sticker packs—static images, animated `.tgs`, and video `.webm` stickers—entirely on your device and exports them to **WhatsApp** and **WhatsApp Business**.
 
 ---
 
 ### ✨ Features
 
-* 🚀 **One-Tap Export:** Find your favorite pack, hit "Add to WhatsApp", and start chatting right away.
-* 🎬 **Full Format Support:** Supports static images, vector animations (.tgs), and video stickers (.webm).
-* 🔗 **Quick Share Integration:** Tap "Share" on any sticker pack inside Telegram and select StickerSwap, or simply paste the link.
-* 🌟 **Explore Trending Packs:** Discover popular curated sticker packs right from the home screen.
-* 🔒 **Privacy First:** Sticker processing happens entirely on your device—no third-party cloud servers involved.
+* 🚀 **One-Tap Export:** Fetch any Telegram pack, pick your stickers, and tap **"Add to WhatsApp"**.
+* 🎬 **Full Format Support:** Converts static stickers, vector animations (`.tgs`), and video stickers (`.webm`) into WhatsApp-compliant WebP packs.
+* 🔗 **Quick Share Integration:** Tap "Share" on any sticker pack inside Telegram and choose **StickerSwap**, or paste the link directly.
+* 🔥 **Popular & Trending Packs:** Browse curated popular packs directly on the home screen and load any pack into search with a single tap.
+* ✏️ **Customization & Saved Packs:** Edit pack/publisher names before export, auto-split packs larger than 30 stickers, and revisit recent searches.
+* 🔒 **Privacy First:** No third-party backend or proxy server is used. All processing runs locally on your phone, and your Bot Token is encrypted in native secure storage (Android Keystore).
 
 ---
 
-### 🚀 Quick Start Guide (How to Use)
+### 📱 Platform Support
 
-Transferring stickers takes just a few simple steps:
+| Platform | Status | Notes |
+| :--- | :---: | :--- |
+| **Android** | ✅ **Full Support** | Direct export to WhatsApp & WhatsApp Business is fully supported. |
+| **iOS** | ⛔ **Not Supported** | StickerSwap is developed exclusively for **Android**; iOS support is not actively developed or planned. |
+
+---
+
+### 🔑 Why a Telegram Bot Token Is Required & How to Get One (~1 Minute)
+
+Telegram only exposes downloadable sticker pack files through the official **Telegram Bot API**. Because StickerSwap runs **100% on-device with no central proxy server**, you connect your own free bot token during initial setup:
+
+1. Open **[@BotFather](https://t.me/BotFather)** in Telegram.
+2. Send `/newbot` and follow the short prompts to choose a display name and a username ending in `bot`.
+3. Copy the **HTTP API Token** provided by BotFather.
+4. Open StickerSwap and paste it via the **"Initial Setup / Add Token"** prompt on the home screen or under **Settings > Telegram Bot Token**.
+
+> Your token is stored encrypted on your device and is only sent directly to `api.telegram.org`.
+
+---
+
+### 🚀 Quick Start Guide
 
 ```mermaid
 flowchart LR
-    A[1. Copy Sticker Link] --> B[2. Paste into StickerSwap]
-    B --> C[3. Preview Pack]
+    A["1. Add @BotFather Token (1 min)"] --> B[2. Paste Sticker Link]
+    B --> C[3. Preview & Select]
     C --> D[4. Add to WhatsApp!]
 ```
 
-1. **Get the Telegram Link:**
-   * Copy any Telegram sticker pack link (e.g. `https://t.me/addstickers/pack_name`), **or**
-   * Tap "Share" on the sticker pack within Telegram and choose **StickerSwap**.
-2. **Fetch the Pack:** The app automatically reads the link and loads the stickers for preview.
-3. **Add to WhatsApp:** Tap the green **"Add to WhatsApp"** button at the bottom.
-4. **Enjoy:** Open WhatsApp, head to your stickers section, and enjoy your new stickers! 🎉
-
----
-
-### 🔑 Using Your Own Telegram Bot Token (Optional)
-
-StickerSwap works out of the box. However, if you want full independence and faster download limits, you can connect your own free Telegram Bot:
-
-1. Open **[@BotFather](https://t.me/BotFather)** in Telegram.
-2. Send `/newbot` and follow the quick instructions to set up a bot.
-3. Copy the **API Token** provided by BotFather.
-4. Open StickerSwap, go to **Settings > Bot Token**, paste the token, and save.
+1. **Initial Setup:** Add your free Telegram Bot Token once.
+2. **Get the Telegram Link:** Paste a pack link (`https://t.me/addstickers/pack_name`) or use **Share > StickerSwap** directly from Telegram.
+3. **Preview & Customize:** Select stickers and optionally customize the pack or publisher name.
+4. **Add to WhatsApp:** Tap **"Add to WhatsApp"** and enjoy your stickers! 🎉
 
 ---
 

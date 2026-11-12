@@ -6,6 +6,7 @@ import '../theme/theme_controller.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/bot_token_guide_sheet.dart';
+import '../widgets/curated_packs_carousel.dart';
 import '../services/telegram_service.dart';
 import '../services/storage_service.dart';
 import 'pack_preview_screen.dart';
@@ -27,6 +28,7 @@ class HomeScreenState extends State<HomeScreen> {
   final _storageService = StorageService();
 
   bool _isLoading = false;
+  bool _showTokenSetupHint = false;
   String? _errorMessage;
   List<String> _recentPacks = [];
 
@@ -48,7 +50,7 @@ class HomeScreenState extends State<HomeScreen> {
 
   Future<void> _initStorage() async {
     await _storageService.init();
-    final savedToken = _storageService.getBotToken();
+    final savedToken = await _storageService.getBotToken();
     if (savedToken != null && savedToken.isNotEmpty) {
       _telegramService.setBotToken(savedToken);
     }
@@ -84,9 +86,31 @@ class HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    if (!_telegramService.hasToken) {
+      setState(() {
+        _errorMessage = null;
+        _showTokenSetupHint = true;
+      });
+      await BotTokenGuideSheet.show(
+        context,
+        storageService: _storageService,
+        contextMessage: 'Paketi getirmek için 1 dakikada ücretsiz token ekleyin',
+        autoCloseOnSave: true,
+        onTokenSaved: () {
+          if (mounted) {
+            setState(() => _showTokenSetupHint = false);
+          }
+        },
+      );
+      if (!mounted || !_telegramService.hasToken) return;
+      await _fetchStickerPack(setName);
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _showTokenSetupHint = false;
     });
 
     try {
@@ -139,7 +163,9 @@ class HomeScreenState extends State<HomeScreen> {
       context,
       storageService: _storageService,
       onTokenSaved: () {
-        setState(() {});
+        if (mounted) {
+          setState(() => _showTokenSetupHint = false);
+        }
       },
     );
   }
@@ -303,7 +329,7 @@ class HomeScreenState extends State<HomeScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Telegram Bot Token Gerekli',
+                                'İlk Kurulum / Token Ekle',
                                 style: TextStyle(
                                   color: textCol,
                                   fontSize: 13,
@@ -312,7 +338,7 @@ class HomeScreenState extends State<HomeScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'Rehbere dokunarak 1 dakikada ücretsiz botunuzu bağlayın.',
+                                'StickerSwap sunucusuz çalışır. 1 dakikada ücretsiz bot tokenınızı ekleyin.',
                                 style: TextStyle(
                                   color: secCol,
                                   fontSize: 11,
@@ -334,7 +360,7 @@ class HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           child: const Text(
-                            'Rehber',
+                            'Token Ekle',
                             style: TextStyle(
                               color: AppTheme.warning,
                               fontSize: 12,
@@ -437,7 +463,54 @@ class HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                     ),
-                    if (_errorMessage != null) ...[
+                    if (_showTokenSetupHint && !_telegramService.hasToken) ...[
+                      const SizedBox(height: 10),
+                      InkWell(
+                        onTap: _openBotTokenGuide,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryBlue.withAlpha(isDark ? 28 : 18),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppTheme.primaryBlue.withAlpha(70),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.vpn_key_rounded,
+                                size: 16,
+                                color: AppTheme.primaryBlue,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'İlk kurulum için ücretsiz Bot Token eklemeniz gerekir.',
+                                  style: TextStyle(
+                                    color: textCol,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              const Text(
+                                'Token Ekle',
+                                style: TextStyle(
+                                  color: AppTheme.primaryBlue,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ] else if (_errorMessage != null) ...[
                       const SizedBox(height: 10),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -470,6 +543,17 @@ class HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ).animate().fadeIn(delay: 300.ms, duration: 400.ms),
+
+              const SizedBox(height: 22),
+
+              // ─── Popular & Trending Curated Packs ────────
+              CuratedPacksCarousel(
+                onPackSelected: (pack) {
+                  _linkController.text = pack.name;
+                  setState(() => _errorMessage = null);
+                  _fetchStickerPack(pack.name);
+                },
+              ).animate().fadeIn(delay: 320.ms, duration: 400.ms),
 
               // ─── Recent Searches Chips ─────────────────────
               if (_recentPacks.isNotEmpty) ...[

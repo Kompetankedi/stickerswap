@@ -44,13 +44,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     await _storageService.init();
-    final savedToken = _storageService.getBotToken();
+    final savedToken = await _storageService.getBotToken();
+    if (!mounted) return;
     if (savedToken != null) {
       _tokenController.text = savedToken;
       _telegramService.setBotToken(savedToken);
     }
     _publisherController.text = _storageService.getPublisherName();
-    if (mounted) setState(() {});
+    setState(() {});
   }
 
   Future<void> _checkWhatsAppStatus() async {
@@ -94,13 +95,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     stopwatch.stop();
 
     if (mounted) {
+      final isValid = result['ok'] == true;
+      if (isValid) {
+        await _storageService.setBotToken(token);
+      }
+      if (!mounted) return;
       setState(() {
         _isTestingToken = false;
-        _tokenValid = result['ok'] == true;
+        _tokenValid = isValid;
         if (_tokenValid) {
           _tokenTestResult =
               '✅ Bağlantı başarılı (${stopwatch.elapsedMilliseconds} ms)\nBot: @${result['username']}';
-          _storageService.setBotToken(token);
         } else {
           _tokenTestResult = '❌ Token geçersiz veya bot yanıt vermiyor.';
         }
@@ -747,6 +752,122 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               const SizedBox(height: 24),
 
+              // ─── Legal Disclaimer & Copyright Section ─────
+              _SectionTitle(
+                icon: Icons.gavel_rounded,
+                title: 'Yasal Uyarı & Sorumluluk Reddi',
+                color: AppTheme.warning,
+              ).animate().fadeIn(delay: 580.ms),
+              const SizedBox(height: 10),
+              GlassCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.link_off_rounded,
+                          size: 17,
+                          color: AppTheme.warning,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Bağımsız Araç Bildirimi',
+                                style: TextStyle(
+                                  color: textCol,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'StickerSwap, Telegram veya WhatsApp (Meta) ile hiçbir resmi bağı, ortaklığı ya da onayı bulunmayan bağımsız bir köprü aracıdır.',
+                                style: TextStyle(
+                                  color: secCol,
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    Divider(
+                      color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                      height: 22,
+                    ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.copyright_rounded,
+                          size: 17,
+                          color: AppTheme.primaryBlue,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Telif Hakları & Kullanım Sorumluluğu',
+                                style: TextStyle(
+                                  color: textCol,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Aktarılan tüm çıkartma paketlerinin telif ve fikri mülkiyet hakları ilgili eser sahiplerine aittir. Kullanıcılar aktardıkları içeriklerin kullanım hakkından bizzat sorumludur.',
+                                style: TextStyle(
+                                  color: secCol,
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    Divider(
+                      color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                      height: 22,
+                    ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.devices_rounded,
+                          size: 17,
+                          color: AppTheme.success,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Tüm indirme ve WebP dönüştürme işlemleri cihazınızda yerel olarak yapılır; veriler üçüncü parti sunuculara gönderilmez.',
+                            style: TextStyle(
+                              color: secCol,
+                              fontSize: 12,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ).animate().fadeIn(delay: 590.ms),
+
+              const SizedBox(height: 24),
+
               // ─── About Section ────────────────────────────
               _SectionTitle(
                 icon: Icons.info_outline_rounded,
@@ -769,7 +890,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     _AboutRow(
                       label: 'Sürüm',
-                      value: '1.0.1+2',
+                      value: '2.0.0+2010',
                       textCol: textCol,
                       secCol: secCol,
                     ),

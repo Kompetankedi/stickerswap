@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import com.example.stickerswap.BuildConfig
 import java.io.File
 import java.io.FileNotFoundException
 
@@ -41,7 +42,9 @@ class StickerContentProvider : ContentProvider() {
         uriMatcher.addURI(authority, "stickers_asset/*/*", STICKER_ASSET)
         uriMatcher.addURI(authority, "stickers_asset/*/*/*", STICKER_ASSET)
 
-        Log.d(TAG, "Initialized StickerContentProvider with authority: $authority")
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "Initialized StickerContentProvider with authority: $authority")
+        }
         return true
     }
 
@@ -117,37 +120,89 @@ class StickerContentProvider : ContentProvider() {
 
         val file = resolveAssetFile(context, identifier, fileName)
         if (file != null && file.exists()) {
-            Log.i(TAG, "openAssetFile SUCCESS: uri=$uri, path=${file.absolutePath}, size=${file.length()}")
+            if (BuildConfig.DEBUG) {
+                Log.i(TAG, "openAssetFile SUCCESS: uri=$uri, path=${file.absolutePath}, size=${file.length()}")
+            }
             return try {
                 val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
                 AssetFileDescriptor(pfd, 0L, AssetFileDescriptor.UNKNOWN_LENGTH)
             } catch (e: Exception) {
-                Log.e(TAG, "Error opening asset file: ${file.absolutePath}, falling back to placeholder", e)
+                if (BuildConfig.DEBUG) {
+                    Log.e(TAG, "Error opening asset file: ${file.absolutePath}, falling back to placeholder", e)
+                } else {
+                    Log.e(TAG, "Error opening asset file, falling back to placeholder")
+                }
                 getOrCreateFallbackAsset(context, fileName)
             }
         }
 
-        Log.w(TAG, "Asset file not found on disk: $fileName (identifier: $identifier, uri: $uri). Serving fallback placeholder.")
+        if (BuildConfig.DEBUG) {
+            Log.w(TAG, "Asset file not found on disk: $fileName (identifier: $identifier, uri: $uri). Serving fallback placeholder.")
+        }
         return getOrCreateFallbackAsset(context, fileName)
     }
 
-    private fun resolveAssetFile(context: Context, identifier: String?, fileName: String): File? {
+    internal fun isPathSandboxed(context: Context, file: File): Boolean {
+        return try {
+            val canonical = file.canonicalPath
+            val appFlutterDir = context.applicationInfo?.dataDir?.let { File(it, "app_flutter") }
+            val allowedDirs = listOfNotNull(
+                context.filesDir?.canonicalPath,
+                context.cacheDir?.canonicalPath,
+                context.getExternalFilesDir(null)?.canonicalPath,
+                appFlutterDir?.canonicalPath
+            )
+            val forbiddenDirs = listOf(
+                File.separator + "shared_prefs",
+                File.separator + "databases",
+                File.separator + "no_backup"
+            )
+            val inAllowedDir = allowedDirs.any { allowed ->
+                canonical.startsWith(allowed + File.separator)
+            }
+            val notForbidden = forbiddenDirs.none { forbidden ->
+                canonical.contains(forbidden + File.separator) || canonical.endsWith(forbidden)
+            }
+            inAllowedDir && notForbidden
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun acceptSandboxedFile(context: Context, file: File): File? {
+        return if (file.exists() && file.isFile && isPathSandboxed(context, file)) file else null
+    }
+
+    internal fun resolveAssetFile(context: Context, identifier: String?, fileName: String): File? {
+        val candidate = resolveAssetFileCandidate(context, identifier, fileName) ?: return null
+        if (!candidate.isFile || !isPathSandboxed(context, candidate)) {
+            if (BuildConfig.DEBUG) {
+                Log.w(TAG, "Blocked non-sandboxed asset path request: ${candidate.path}")
+            } else {
+                Log.w(TAG, "Blocked non-sandboxed asset path request")
+            }
+            return null
+        }
+        return candidate
+    }
+
+    private fun resolveAssetFileCandidate(context: Context, identifier: String?, fileName: String): File? {
         val decodedName = try { Uri.decode(fileName) } catch (_: Exception) { fileName }
 
         // 1. Direct path check
         if (fileName.startsWith(File.separator)) {
             val direct = File(fileName)
-            if (direct.exists()) return direct
+            if (direct.exists()) return acceptSandboxedFile(context, direct)
         }
         if (decodedName.startsWith(File.separator)) {
             val directDecoded = File(decodedName)
-            if (directDecoded.exists()) return directDecoded
+            if (directDecoded.exists()) return acceptSandboxedFile(context, directDecoded)
         }
 
         // 2. Encoded path check (e.g., data._.user._.0._...)
         val decodedPath = StickerPack.decodePath(fileName)
         val decodedFile = File(decodedPath)
-        if (decodedFile.exists()) return decodedFile
+        if (decodedFile.exists()) return acceptSandboxedFile(context, decodedFile)
 
         // 3. Search via StickerPackStorage if identifier is available
         if (!identifier.isNullOrEmpty()) {
@@ -165,8 +220,8 @@ class StickerContentProvider : ContentProvider() {
                     ((fileName.startsWith("tray_") || decodedName.startsWith("tray_")) &&
                         (fileName.endsWith(".png") || fileName.endsWith(".webp")))
 
-                if (isTray && trayF.exists()) {
-                    return trayF
+                if (isTray) {
+                    acceptSandboxedFile(context, trayF)?.let { return it }
                 }
 
                 // Is it one of the stickers?
@@ -179,8 +234,7 @@ class StickerContentProvider : ContentProvider() {
                     StickerPack.encodePath(it.path) == fileName
                 }
                 if (stickerMatch != null) {
-                    val sFile = File(stickerMatch.path)
-                    if (sFile.exists()) return sFile
+                    acceptSandboxedFile(context, File(stickerMatch.path))?.let { return it }
                 }
 
                 // Strict numeric index matching ONLY if filename is strictly formatted like "sticker_1.webp" or "0.webp"
@@ -190,8 +244,7 @@ class StickerContentProvider : ContentProvider() {
                     if (rawNum != null) {
                         val idx0 = if (fileName.startsWith("sticker_", ignoreCase = true)) rawNum - 1 else rawNum
                         if (idx0 in pack.stickers.indices) {
-                            val candidate = File(pack.stickers[idx0].path)
-                            if (candidate.exists()) return candidate
+                            acceptSandboxedFile(context, File(pack.stickers[idx0].path))?.let { return it }
                         }
                     }
                 }
@@ -200,11 +253,13 @@ class StickerContentProvider : ContentProvider() {
 
         // 4. Candidate directories in Flutter and native storage
         val baseCandidateDirs = mutableListOf<File>()
-        val appFlutterDir = File(context.applicationInfo.dataDir, "app_flutter")
-        baseCandidateDirs.add(File(appFlutterDir, "whatsapp_packs"))
+        val appFlutterDir = context.applicationInfo?.dataDir?.let { File(it, "app_flutter") }
+        if (appFlutterDir != null) {
+            baseCandidateDirs.add(File(appFlutterDir, "whatsapp_packs"))
+            baseCandidateDirs.add(File(appFlutterDir, "stickers"))
+        }
         baseCandidateDirs.add(File(context.filesDir, "whatsapp_packs"))
         baseCandidateDirs.add(File(context.cacheDir, "whatsapp_packs"))
-        baseCandidateDirs.add(File(appFlutterDir, "stickers"))
         baseCandidateDirs.add(File(context.filesDir, "stickers"))
 
         val cleanName = File(decodedPath).name
@@ -216,37 +271,29 @@ class StickerContentProvider : ContentProvider() {
             if (!identifier.isNullOrEmpty()) {
                 val packDir1 = File(baseDir, identifier)
                 if (packDir1.exists()) {
-                    val f1 = File(packDir1, fileName)
-                    if (f1.exists()) return f1
-                    val f2 = File(packDir1, cleanName)
-                    if (f2.exists()) return f2
+                    acceptSandboxedFile(context, File(packDir1, fileName))?.let { return it }
+                    acceptSandboxedFile(context, File(packDir1, cleanName))?.let { return it }
                 }
                 // Check without _part suffix (e.g. AzizKediler_by_fStikBot_part2 -> AzizKediler_by_fStikBot)
                 val basePackId = identifier.replace(Regex("_part[0-9]+.*"), "")
                 if (basePackId != identifier) {
                     val packDir2 = File(baseDir, basePackId)
                     if (packDir2.exists()) {
-                        val f1 = File(packDir2, fileName)
-                        if (f1.exists()) return f1
-                        val f2 = File(packDir2, cleanName)
-                        if (f2.exists()) return f2
+                        acceptSandboxedFile(context, File(packDir2, fileName))?.let { return it }
+                        acceptSandboxedFile(context, File(packDir2, cleanName))?.let { return it }
                     }
                 }
             }
 
             // 4b. Direct file inside baseDir
-            val directInBase = File(baseDir, fileName)
-            if (directInBase.exists()) return directInBase
-            val cleanInBase = File(baseDir, cleanName)
-            if (cleanInBase.exists()) return cleanInBase
+            acceptSandboxedFile(context, File(baseDir, fileName))?.let { return it }
+            acceptSandboxedFile(context, File(baseDir, cleanName))?.let { return it }
 
             // 4c. Search subdirectories
             val subdirs = baseDir.listFiles { f -> f.isDirectory } ?: emptyArray()
             for (sub in subdirs) {
-                val candidate = File(sub, cleanName)
-                if (candidate.exists()) return candidate
-                val candidateRaw = File(sub, fileName)
-                if (candidateRaw.exists()) return candidateRaw
+                acceptSandboxedFile(context, File(sub, cleanName))?.let { return it }
+                acceptSandboxedFile(context, File(sub, fileName))?.let { return it }
             }
         }
 
@@ -254,13 +301,11 @@ class StickerContentProvider : ContentProvider() {
         val allPacks = StickerPackStorage.getStickerPacks(context)
         for (p in allPacks) {
             if (File(p.trayImage).name == cleanName) {
-                val f = File(p.trayImage)
-                if (f.exists()) return f
+                acceptSandboxedFile(context, File(p.trayImage))?.let { return it }
             }
             for (s in p.stickers) {
                 if (File(s.path).name == cleanName) {
-                    val f = File(s.path)
-                    if (f.exists()) return f
+                    acceptSandboxedFile(context, File(s.path))?.let { return it }
                 }
             }
         }
@@ -315,7 +360,9 @@ class StickerContentProvider : ContentProvider() {
         }
 
         return if (!identifier.isNullOrEmpty()) {
-            Log.d(TAG, "delete called for identifier: $identifier")
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "delete called for identifier: $identifier")
+            }
             StickerPackStorage.deleteStickerPack(context, identifier)
             try {
                 val authority = getAuthority(context.packageName)

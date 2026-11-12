@@ -9,17 +9,23 @@ import 'gradient_button.dart';
 class BotTokenGuideSheet extends StatefulWidget {
   final StorageService storageService;
   final VoidCallback? onTokenSaved;
+  final String? contextMessage;
+  final bool autoCloseOnSave;
 
   const BotTokenGuideSheet({
     super.key,
     required this.storageService,
     this.onTokenSaved,
+    this.contextMessage,
+    this.autoCloseOnSave = false,
   });
 
   static Future<void> show(
     BuildContext context, {
     required StorageService storageService,
     VoidCallback? onTokenSaved,
+    String? contextMessage,
+    bool autoCloseOnSave = false,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -28,6 +34,8 @@ class BotTokenGuideSheet extends StatefulWidget {
       builder: (ctx) => BotTokenGuideSheet(
         storageService: storageService,
         onTokenSaved: onTokenSaved,
+        contextMessage: contextMessage,
+        autoCloseOnSave: autoCloseOnSave,
       ),
     );
   }
@@ -45,9 +53,16 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
   @override
   void initState() {
     super.initState();
-    final saved = widget.storageService.getBotToken();
-    if (saved != null) {
-      _tokenController.text = saved;
+    _loadSavedToken();
+  }
+
+  Future<void> _loadSavedToken() async {
+    final saved = await widget.storageService.getBotToken();
+    if (!mounted) return;
+    if (saved != null && saved.isNotEmpty && _tokenController.text.isEmpty) {
+      setState(() {
+        _tokenController.text = saved;
+      });
     }
   }
 
@@ -102,6 +117,9 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
             'Harika! @$botUser botu başarıyla doğrulandı ve kaydedildi.';
       });
       widget.onTokenSaved?.call();
+      if (widget.autoCloseOnSave && mounted) {
+        Navigator.of(context).pop(true);
+      }
     } else {
       setState(() {
         _isTesting = false;
@@ -185,7 +203,7 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '1 dakikada ücretsiz kendi botunuzu kurun',
+                        widget.contextMessage ?? '1 dakikada ücretsiz kendi botunuzu kurun',
                         style: TextStyle(fontSize: 13, color: secCol),
                       ),
                     ],
@@ -478,6 +496,31 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                         child: Text(
                           'Tokenınız tamamen kendi cihazınızda saklanır ve doğrudan Telegram API ile haberleşir.',
                           style: TextStyle(fontSize: 12, color: secCol),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.warning.withAlpha(isDark ? 22 : 16),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.gavel_rounded,
+                        size: 17,
+                        color: AppTheme.warning,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'StickerSwap, Telegram veya WhatsApp ile resmi bağı olmayan bağımsız bir araçtır. Aktarılan içeriklerin telif sorumluluğu kullanıcıya aittir.',
+                          style: TextStyle(fontSize: 11.5, color: secCol, height: 1.35),
                         ),
                       ),
                     ],

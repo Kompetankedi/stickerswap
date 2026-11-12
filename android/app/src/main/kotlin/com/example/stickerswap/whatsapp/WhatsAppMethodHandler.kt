@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.util.Log
+import com.example.stickerswap.BuildConfig
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
@@ -67,12 +68,14 @@ class WhatsAppMethodHandler(private val activity: Activity) : MethodChannel.Meth
                     val stickerPack = StickerPack.fromJson(json)
 
                     // Diagnostic logging for transparency
-                    Log.i(TAG, "Adding sticker pack: id=${stickerPack.identifier}, ver=${stickerPack.imageDataVersion}, name=${stickerPack.name}, isAnimated=${stickerPack.animatedStickerPack}, count=${stickerPack.stickers.size}, tray=${stickerPack.trayImage}")
-                    val trayF = java.io.File(stickerPack.trayImage)
-                    Log.d(TAG, "Tray icon status: exists=${trayF.exists()}, sizeBytes=${if (trayF.exists()) trayF.length() else -1}")
-                    for ((idx, s) in stickerPack.stickers.withIndex()) {
-                        val sf = java.io.File(s.path)
-                        Log.d(TAG, "Sticker #$idx: path=${s.path}, sizeBytes=${if (sf.exists()) sf.length() else -1}, emojis=${s.emojis}")
+                    if (BuildConfig.DEBUG) {
+                        Log.i(TAG, "Adding sticker pack: id=${stickerPack.identifier}, ver=${stickerPack.imageDataVersion}, name=${stickerPack.name}, isAnimated=${stickerPack.animatedStickerPack}, count=${stickerPack.stickers.size}, tray=${stickerPack.trayImage}")
+                        val trayF = java.io.File(stickerPack.trayImage)
+                        Log.d(TAG, "Tray icon status: exists=${trayF.exists()}, sizeBytes=${if (trayF.exists()) trayF.length() else -1}")
+                        for ((idx, s) in stickerPack.stickers.withIndex()) {
+                            val sf = java.io.File(s.path)
+                            Log.d(TAG, "Sticker #$idx: path=${s.path}, sizeBytes=${if (sf.exists()) sf.length() else -1}, emojis=${s.emojis}")
+                        }
                     }
 
                     // 1. Save or update the pack metadata in local storage for ContentProvider
@@ -150,17 +153,23 @@ class WhatsAppMethodHandler(private val activity: Activity) : MethodChannel.Meth
         }
 
         val validationError = data?.getStringExtra("validation_error")
-        Log.i(TAG, "onActivityResult: requestCode=$requestCode, resultCode=$resultCode, validationError=$validationError, extras=${data?.extras}")
+        if (BuildConfig.DEBUG) {
+            Log.i(TAG, "onActivityResult: requestCode=$requestCode, resultCode=$resultCode, validationError=$validationError, extras=${data?.extras}")
+        }
 
         if (resultCode == Activity.RESULT_OK) {
-            Log.d(TAG, "Sticker pack successfully added by user in WhatsApp")
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "Sticker pack successfully added by user in WhatsApp")
+            }
             resultCallback.success(mapOf(
                 "status" to "added",
                 "success" to true
             ))
         } else if (resultCode == Activity.RESULT_CANCELED) {
             if (!validationError.isNullOrEmpty()) {
-                Log.e(TAG, "WhatsApp sticker validation error: $validationError")
+                if (BuildConfig.DEBUG) {
+                    Log.e(TAG, "WhatsApp sticker validation error: $validationError")
+                }
                 val friendlyError = if (validationError.contains("handleStickerPackPreviewResult")) {
                     "WhatsApp çıkartma paketini doğrulayamadı (handleStickerPackPreviewResult). Çıkartma boyutu (maks 500 KB) veya format uyumsuz olabilir."
                 } else {
@@ -172,7 +181,9 @@ class WhatsAppMethodHandler(private val activity: Activity) : MethodChannel.Meth
                     "error" to friendlyError
                 ))
             } else {
-                Log.d(TAG, "User cancelled adding sticker pack in WhatsApp dialog")
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "User cancelled adding sticker pack in WhatsApp dialog")
+                }
                 resultCallback.success(mapOf(
                     "status" to "cancelled",
                     "success" to false

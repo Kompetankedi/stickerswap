@@ -103,10 +103,12 @@ class StickerProcessor {
       }
 
       if (frames.isNotEmpty) {
-        debugPrint(
-          'processVideoSticker($baseName): extracted=${frames.length} frames, '
-          'duration=${totalDurationMs}ms, delay=${frameDelayMs}ms',
-        );
+        if (kDebugMode) {
+          debugPrint(
+            'processVideoSticker($baseName): extracted=${frames.length} frames, '
+            'duration=${totalDurationMs}ms, delay=${frameDelayMs}ms',
+          );
+        }
         // Offload heavy image decoding and WebP compression to background Isolate
         return await Isolate.run(() {
           return _createAnimatedWebpFromPngFramesSync(
@@ -119,7 +121,9 @@ class StickerProcessor {
         });
       }
     } catch (e) {
-      debugPrint('Video sticker extraction error: $e');
+      if (kDebugMode) {
+        debugPrint('Video sticker extraction error: $e');
+      }
     }
 
     if (fallbackThumbnailBytes != null && fallbackThumbnailBytes.isNotEmpty) {
@@ -219,10 +223,12 @@ class StickerProcessor {
       }
 
       if (frames.isNotEmpty) {
-        debugPrint(
-          'processLottieSticker($baseName): rendered=${frames.length} frames, '
-          'duration=${totalDurationMs}ms, delay=${frameDelayMs}ms',
-        );
+        if (kDebugMode) {
+          debugPrint(
+            'processLottieSticker($baseName): rendered=${frames.length} frames, '
+            'duration=${totalDurationMs}ms, delay=${frameDelayMs}ms',
+          );
+        }
         return await Isolate.run(() {
           return _createAnimatedWebpFromPngFramesSync(
             pngFrames: frames,
@@ -234,7 +240,9 @@ class StickerProcessor {
         });
       }
     } catch (e) {
-      debugPrint('Lottie sticker conversion error: $e');
+      if (kDebugMode) {
+        debugPrint('Lottie sticker conversion error: $e');
+      }
     }
 
     if (fallbackThumbnailBytes != null && fallbackThumbnailBytes.isNotEmpty) {
@@ -528,6 +536,21 @@ class StickerProcessor {
     return (matched: null, smallest: smallest);
   }
 
+  /// Re-compresses an existing WebP sticker in a background isolate so it satisfies
+  /// WhatsApp's 512x512 dimension, size ceiling (<= 96 KB static / <= 460 KB animated),
+  /// and duration (<= 3000 ms) limits.
+  Future<String> recompressWebpSticker(
+    String webpPath, {
+    required bool asAnimated,
+  }) async {
+    return await Isolate.run(() {
+      return _recompressWebpSync(
+        webpPath: webpPath,
+        asAnimated: asAnimated,
+      );
+    });
+  }
+
   /// Synchronously encodes a list of frames into Animated WebP within a background isolate.
   /// Strictly guarantees:
   /// - Exact 512x512 pixels
@@ -556,6 +579,64 @@ class StickerProcessor {
       throw Exception('Hiçbir kare çözülemedi');
     }
 
+    return _encodeDecodedAnimatedFramesSync(
+      frames: decodedList,
+      outputPath: outputPath,
+      frameDelayMs: frameDelayMs,
+      maxKb: maxKb,
+      totalDurationMs: totalDurationMs,
+    );
+  }
+
+  static String _recompressWebpSync({
+    required String webpPath,
+    required bool asAnimated,
+  }) {
+    final file = File(webpPath);
+    if (!file.existsSync()) {
+      throw Exception('Çıkartma dosyası bulunamadı: $webpPath');
+    }
+    final bytes = file.readAsBytesSync();
+    final decoded = img.decodeWebP(bytes) ?? img.decodeImage(bytes);
+    if (decoded == null) {
+      throw Exception('WebP dosyası çözülemedi: $webpPath');
+    }
+
+    if (!asAnimated) {
+      return _processImageBytesSync(
+        bytes: bytes,
+        outputPath: webpPath,
+        asAnimated: false,
+      );
+    }
+
+    final rawFrames =
+        decoded.frames.isNotEmpty ? decoded.frames : <img.Image>[decoded];
+    final frames = rawFrames.map((f) => f.clone()).toList();
+    int sumDurationMs = 0;
+    for (final f in frames) {
+      sumDurationMs += f.frameDuration > 0 ? f.frameDuration : 125;
+    }
+    final clampedDuration = sumDurationMs.clamp(200, 3000);
+    final delayMs = (clampedDuration / frames.length).round().clamp(16, 1500);
+
+    return _encodeDecodedAnimatedFramesSync(
+      frames: frames,
+      outputPath: webpPath,
+      frameDelayMs: delayMs,
+      maxKb: _maxAnimatedKb,
+      totalDurationMs: clampedDuration,
+    );
+  }
+
+  static String _encodeDecodedAnimatedFramesSync({
+    required List<img.Image> frames,
+    required String outputPath,
+    int frameDelayMs = 125,
+    int maxKb = _maxAnimatedKb,
+    int totalDurationMs = 3000,
+  }) {
+    final decodedList = List<img.Image>.from(frames);
     // Determine desired playback duration before duplicating a single-frame input
     final derivedMs = decodedList.length * frameDelayMs;
     final targetDurationMs =

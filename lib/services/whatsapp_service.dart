@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 enum WhatsAppExportStatus {
   added,
   cancelled,
+  unsupportedPlatform,
   error,
 }
 
@@ -20,6 +21,8 @@ class WhatsAppExportResult {
 
   bool get isAdded => status == WhatsAppExportStatus.added;
   bool get isCancelled => status == WhatsAppExportStatus.cancelled;
+  bool get isUnsupportedPlatform =>
+      status == WhatsAppExportStatus.unsupportedPlatform;
   bool get isError => status == WhatsAppExportStatus.error;
 }
 
@@ -27,6 +30,19 @@ class WhatsAppExportResult {
 /// WhatsApp Stickers third-party API / Content Provider mechanism.
 class WhatsAppService {
   static const MethodChannel _channel = MethodChannel('com.example.stickerswap/whatsapp');
+
+  static const String iosUnsupportedMessage =
+      'StickerSwap yalnızca Android için geliştirilmektedir; '
+      'iOS WhatsApp aktarımı desteklenmemektedir.';
+
+  final bool Function()? _isIosOverride;
+
+  const WhatsAppService({bool Function()? isIosOverride})
+      : _isIosOverride = isIosOverride;
+
+  bool get isExportUnsupportedPlatform => _isIos();
+
+  bool _isIos() => _isIosOverride?.call() ?? Platform.isIOS;
 
   static String _sanitizeCore(String input) {
     const trMap = {
@@ -184,6 +200,13 @@ class WhatsAppService {
     required List<Map<String, dynamic>> stickerData,
     bool animatedStickerPack = false,
   }) async {
+    if (_isIos()) {
+      return const WhatsAppExportResult(
+        status: WhatsAppExportStatus.unsupportedPlatform,
+        errorMessage: iosUnsupportedMessage,
+      );
+    }
+
     // 1. Pack size limits (WhatsApp requires 3 to 30 stickers)
     if (stickerData.length < 3) {
       throw Exception(
@@ -298,6 +321,11 @@ class WhatsAppService {
           errorMessage: errorMsg,
         );
       }
+    } on MissingPluginException {
+      return const WhatsAppExportResult(
+        status: WhatsAppExportStatus.unsupportedPlatform,
+        errorMessage: iosUnsupportedMessage,
+      );
     } on PlatformException catch (e) {
       var msg = e.message ?? e.code;
       if (msg.contains('handleStickerPackPreviewResult')) {
