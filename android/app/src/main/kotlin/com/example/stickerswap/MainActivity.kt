@@ -15,6 +15,7 @@ import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import com.example.stickerswap.whatsapp.WhatsAppMethodHandler
 import io.flutter.embedding.android.FlutterActivity
@@ -23,11 +24,15 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.stickerswap/share"
     private val VIDEO_CHANNEL = "com.example.stickerswap/video"
+    private val mediaExecutor: ExecutorService = Executors.newFixedThreadPool(3)
     private var sharedData: String? = null
     private var channel: MethodChannel? = null
     private var whatsAppHandler: WhatsAppMethodHandler? = null
@@ -86,12 +91,18 @@ class MainActivity : FlutterActivity() {
                     return@setMethodCallHandler
                 }
 
-                Thread {
-                    val response = extractVideoFrames(videoPath, targetFps, maxFrames)
-                    runOnUiThread {
-                        result.success(response)
+                executeOnMediaPool(result) {
+                    try {
+                        val response = extractVideoFrames(videoPath, targetFps, maxFrames)
+                        runOnUiThread {
+                            result.success(response)
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            result.error("VIDEO_EXTRACT_ERROR", e.message, null)
+                        }
                     }
-                }.start()
+                }
             } else if (call.method == "compressStaticWebP") {
                 val inputPath = call.argument<String>("inputPath")
                 val outputPath = call.argument<String>("outputPath")
@@ -100,12 +111,12 @@ class MainActivity : FlutterActivity() {
                     return@setMethodCallHandler
                 }
 
-                Thread {
+                executeOnMediaPool(result) {
                     try {
                         val srcBitmap = BitmapFactory.decodeFile(inputPath)
                         if (srcBitmap == null) {
                             runOnUiThread { result.error("DECODE_FAIL", "Cannot decode static sticker: $inputPath", null) }
-                            return@Thread
+                            return@executeOnMediaPool
                         }
 
                         val targetSize = 512
@@ -165,11 +176,28 @@ class MainActivity : FlutterActivity() {
                             result.error("NATIVE_COMPRESS_ERROR", e.message, null)
                         }
                     }
-                }.start()
+                }
             } else {
                 result.notImplemented()
             }
         }
+    }
+
+    private fun executeOnMediaPool(result: MethodChannel.Result, task: () -> Unit) {
+        if (isDestroyed || mediaExecutor.isShutdown) {
+            result.error("EXECUTOR_SHUTDOWN", "Media executor is unavailable", null)
+            return
+        }
+        try {
+            mediaExecutor.execute(task)
+        } catch (e: RejectedExecutionException) {
+            result.error("EXECUTOR_REJECTED", e.message ?: "Media task rejected", null)
+        }
+    }
+
+    override fun onDestroy() {
+        mediaExecutor.shutdownNow()
+        super.onDestroy()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -434,10 +462,12 @@ class MainActivity : FlutterActivity() {
 
             val bufferInfo = MediaCodec.BufferInfo()
             val timeoutUs = 10000L
+            val watchdogTimeoutMs = 1500L
             var inputDone = false
             var outputDone = false
+            var timedOut = false
             var noProgressCount = 0
-            var totalIdleIterations = 0
+            var lastOutputProgressMs = SystemClock.elapsedRealtime()
             var stride = width
             var sliceHeight = height
             var colorFormat = 19
@@ -446,11 +476,9 @@ class MainActivity : FlutterActivity() {
             var maxPtsUs = 0L
 
             while (!outputDone && frames.size < targetFrameCount) {
-                var hadProgress = false
                 if (!inputDone) {
                     val inIdx = decoder.dequeueInputBuffer(timeoutUs)
                     if (inIdx >= 0) {
-                        hadProgress = true
                         val inBuf = decoder.getInputBuffer(inIdx)
                         if (inBuf != null) {
                             val sampleSize = extractor.readSampleData(inBuf, 0)
@@ -478,9 +506,10 @@ class MainActivity : FlutterActivity() {
                 }
 
                 val outIdx = decoder.dequeueOutputBuffer(bufferInfo, timeoutUs)
+                var hadOutputProgress = false
                 when {
                     outIdx >= 0 -> {
-                        hadProgress = true
+                        hadOutputProgress = true
                         noProgressCount = 0
                         if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                             outputDone = true
@@ -517,7 +546,7 @@ class MainActivity : FlutterActivity() {
                         decoder.releaseOutputBuffer(outIdx, false)
                     }
                     outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                        hadProgress = true
+                        hadOutputProgress = true
                         noProgressCount = 0
                         val outFormat = decoder.outputFormat
                         if (outFormat.containsKey("stride")) stride = outFormat.getInteger("stride")
@@ -527,25 +556,32 @@ class MainActivity : FlutterActivity() {
                     outIdx == MediaCodec.INFO_TRY_AGAIN_LATER -> {
                         if (inputDone) {
                             noProgressCount++
-                            if (noProgressCount > 250) {
-                                Log.w("MainActivity", "$modeLabel stalled after input EOS, frames=${frames.size}")
+                            if (noProgressCount > 150) {
+                                if (BuildConfig.DEBUG) {
+                                    Log.w("MainActivity", "$modeLabel stalled after input EOS, frames=${frames.size}")
+                                }
+                                timedOut = true
                                 break
                             }
                         }
                     }
                 }
-                if (hadProgress) {
-                    totalIdleIterations = 0
-                } else {
-                    totalIdleIterations++
-                    if (totalIdleIterations > 1000) {
-                        Log.w("MainActivity", "$modeLabel stalled without codec progress, frames=${frames.size}")
-                        break
+                val nowMs = SystemClock.elapsedRealtime()
+                if (hadOutputProgress) {
+                    lastOutputProgressMs = nowMs
+                } else if (nowMs - lastOutputProgressMs >= watchdogTimeoutMs) {
+                    if (BuildConfig.DEBUG) {
+                        Log.w(
+                            "MainActivity",
+                            "$modeLabel watchdog timeout after ${watchdogTimeoutMs}ms without output, frames=${frames.size}"
+                        )
                     }
+                    timedOut = true
+                    break
                 }
             }
 
-            if (frames.isEmpty()) {
+            if (frames.isEmpty() || (timedOut && !preferSoftware && frames.size < targetFrameCount)) {
                 return null
             }
 
@@ -630,72 +666,92 @@ class MainActivity : FlutterActivity() {
 
     private fun imageToNv21(image: Image, outW: Int, outH: Int): ByteArray? {
         if (outW <= 0 || outH <= 0 || image.planes.size < 3) return null
-        val crop = image.cropRect
+        val rawCrop = image.cropRect
+        // Align crop origin to even coordinates so 4:2:0 chroma samples stay phase-locked with luma.
+        val cropLeft = (rawCrop.left and -2).coerceIn(0, maxOf(0, image.width - outW))
+        val cropTop = (rawCrop.top and -2).coerceIn(0, maxOf(0, image.height - outH))
+        if (cropLeft + outW > image.width || cropTop + outH > image.height) return null
+
         val yPlane = image.planes[0]
         val uPlane = image.planes[1]
         val vPlane = image.planes[2]
 
-        val yBuf = yPlane.buffer
-        val uBuf = uPlane.buffer
-        val vBuf = vPlane.buffer
+        val yBuf = yPlane.buffer.duplicate()
+        val uBuf = uPlane.buffer.duplicate()
+        val vBuf = vPlane.buffer.duplicate()
 
         val yLimit = yBuf.limit()
         val uLimit = uBuf.limit()
         val vLimit = vBuf.limit()
 
-        val yRowStride = yPlane.rowStride
-        val yPixelStride = yPlane.pixelStride
-        val uRowStride = uPlane.rowStride
-        val uPixelStride = uPlane.pixelStride
-        val vRowStride = vPlane.rowStride
-        val vPixelStride = vPlane.pixelStride
+        val yRowStride = maxOf(yPlane.rowStride, outW)
+        val yPixelStride = maxOf(yPlane.pixelStride, 1)
+        val uRowStride = maxOf(uPlane.rowStride, 1)
+        val uPixelStride = maxOf(uPlane.pixelStride, 1)
+        val vRowStride = maxOf(vPlane.rowStride, 1)
+        val vPixelStride = maxOf(vPlane.pixelStride, 1)
 
         val nv21 = ByteArray(outW * outH * 3 / 2)
-        var pos = 0
+        java.util.Arrays.fill(nv21, outW * outH, nv21.size, 128.toByte())
 
-        if (yPixelStride == 1 && yRowStride == outW && crop.left == 0 && crop.top == 0 && yLimit >= outW * outH) {
+        var pos = 0
+        if (yPixelStride == 1 && yRowStride == outW && cropLeft == 0 && cropTop == 0 && yLimit >= outW * outH) {
             yBuf.position(0)
             yBuf.get(nv21, 0, outW * outH)
             pos = outW * outH
         } else {
-            val rowBuf = ByteArray(yRowStride)
+            val rowBuf = ByteArray(maxOf(yRowStride, outW * yPixelStride))
             for (row in 0 until outH) {
-                val rowStart = (row + crop.top) * yRowStride + crop.left * yPixelStride
-                if (rowStart < 0 || rowStart >= yLimit) {
-                    pos += outW
-                    continue
-                }
-                if (yPixelStride == 1) {
-                    val len = minOf(outW, yLimit - rowStart)
-                    yBuf.position(rowStart)
-                    yBuf.get(nv21, pos, len)
-                    pos += outW
-                } else {
-                    val len = minOf(rowBuf.size, yLimit - rowStart)
-                    yBuf.position(rowStart)
-                    yBuf.get(rowBuf, 0, len)
-                    for (col in 0 until outW) {
-                        val idx = col * yPixelStride
-                        nv21[pos++] = if (idx < len) rowBuf[idx] else 0
+                val rowStart = (row + cropTop) * yRowStride + cropLeft * yPixelStride
+                if (rowStart in 0 until yLimit) {
+                    if (yPixelStride == 1) {
+                        val len = minOf(outW, yLimit - rowStart)
+                        yBuf.position(rowStart)
+                        yBuf.get(nv21, pos, len)
+                    } else {
+                        val available = yLimit - rowStart
+                        val needed = (outW - 1) * yPixelStride + 1
+                        val len = minOf(minOf(rowBuf.size, needed), available)
+                        yBuf.position(rowStart)
+                        yBuf.get(rowBuf, 0, len)
+                        for (col in 0 until outW) {
+                            val idx = col * yPixelStride
+                            nv21[pos + col] = if (idx < len) rowBuf[idx] else 0
+                        }
                     }
                 }
+                pos += outW
             }
         }
 
         val chromaH = outH / 2
         val chromaW = outW / 2
-        val cropChromaTop = crop.top / 2
-        val cropChromaLeft = crop.left / 2
+        val cropChromaTop = cropTop / 2
+        val cropChromaLeft = cropLeft / 2
+        val uRowSpan = (chromaW - 1) * uPixelStride + 1
+        val vRowSpan = (chromaW - 1) * vPixelStride + 1
+        val uRowBuf = ByteArray(maxOf(uRowStride, uRowSpan))
+        val vRowBuf = ByteArray(maxOf(vRowStride, vRowSpan))
         pos = outW * outH
 
         for (row in 0 until chromaH) {
             val vRowStart = (row + cropChromaTop) * vRowStride + cropChromaLeft * vPixelStride
             val uRowStart = (row + cropChromaTop) * uRowStride + cropChromaLeft * uPixelStride
+            val vAvailable = if (vRowStart in 0 until vLimit) minOf(vRowSpan, vLimit - vRowStart) else 0
+            val uAvailable = if (uRowStart in 0 until uLimit) minOf(uRowSpan, uLimit - uRowStart) else 0
+            if (vAvailable > 0) {
+                vBuf.position(vRowStart)
+                vBuf.get(vRowBuf, 0, vAvailable)
+            }
+            if (uAvailable > 0) {
+                uBuf.position(uRowStart)
+                uBuf.get(uRowBuf, 0, uAvailable)
+            }
             for (col in 0 until chromaW) {
-                val vIdx = vRowStart + col * vPixelStride
-                val uIdx = uRowStart + col * uPixelStride
-                nv21[pos++] = if (vIdx in 0 until vLimit) vBuf.get(vIdx) else 128.toByte()
-                nv21[pos++] = if (uIdx in 0 until uLimit) uBuf.get(uIdx) else 128.toByte()
+                val vIdx = col * vPixelStride
+                val uIdx = col * uPixelStride
+                nv21[pos++] = if (vIdx < vAvailable) vRowBuf[vIdx] else 128.toByte()
+                nv21[pos++] = if (uIdx < uAvailable) uRowBuf[uIdx] else 128.toByte()
             }
         }
 
@@ -710,31 +766,47 @@ class MainActivity : FlutterActivity() {
         sliceHeight: Int,
         colorFormat: Int
     ): ByteArray? {
-        if (width <= 0 || height <= 0 || stride < width || sliceHeight < height) return null
+        if (width <= 0 || height <= 0) return null
+        val effectiveStride = maxOf(stride, width)
+        val effectiveSliceHeight = maxOf(sliceHeight, height)
         val nv21 = ByteArray(width * height * 3 / 2)
+        java.util.Arrays.fill(nv21, width * height, nv21.size, 128.toByte())
+
         for (row in 0 until height) {
-            val srcOffset = row * stride
+            val srcOffset = row * effectiveStride
             val dstOffset = row * width
-            if (srcOffset + width <= rawYuv.size) {
-                System.arraycopy(rawYuv, srcOffset, nv21, dstOffset, width)
+            if (srcOffset in 0 until rawYuv.size) {
+                val copyLen = minOf(width, rawYuv.size - srcOffset)
+                System.arraycopy(rawYuv, srcOffset, nv21, dstOffset, copyLen)
             }
         }
 
-        val yPlaneBytes = stride * sliceHeight
-        val uvPlaneBytes = (stride / 2) * (sliceHeight / 2)
+        val yPlaneBytes = effectiveStride * effectiveSliceHeight
+        val uvStride = (effectiveStride + 1) / 2
+        val uvSliceHeight = (effectiveSliceHeight + 1) / 2
+        val uvPlaneBytes = uvStride * uvSliceHeight
         val chromaH = height / 2
         val chromaW = width / 2
         var dstPos = width * height
 
-        if (colorFormat == 21) {
-            // NV12: interleaved U, V
+        val isSemiPlanarNv12 = colorFormat == 21 ||
+            colorFormat == 39 ||
+            colorFormat == 0x7FA30C00 ||
+            colorFormat == 0x7FA30C04
+
+        if (isSemiPlanarNv12) {
+            // NV12 / semi-planar: interleaved U, V
             for (row in 0 until chromaH) {
-                val rowOffset = yPlaneBytes + row * stride
+                val rowOffset = yPlaneBytes + row * effectiveStride
                 for (col in 0 until chromaW) {
                     val idx = rowOffset + col * 2
-                    if (idx + 1 < rawYuv.size && dstPos + 1 < nv21.size) {
-                        nv21[dstPos++] = rawYuv[idx + 1]
-                        nv21[dstPos++] = rawYuv[idx]
+                    if (dstPos + 1 < nv21.size) {
+                        if (idx >= 0 && idx + 1 < rawYuv.size) {
+                            nv21[dstPos++] = rawYuv[idx + 1]
+                            nv21[dstPos++] = rawYuv[idx]
+                        } else {
+                            dstPos += 2
+                        }
                     }
                 }
             }
@@ -742,15 +814,18 @@ class MainActivity : FlutterActivity() {
             // I420 planar: U plane followed by V plane
             val uBase = yPlaneBytes
             val vBase = yPlaneBytes + uvPlaneBytes
-            val uvStride = stride / 2
             for (row in 0 until chromaH) {
                 val rowOff = row * uvStride
                 for (col in 0 until chromaW) {
                     val uIdx = uBase + rowOff + col
                     val vIdx = vBase + rowOff + col
-                    if (vIdx < rawYuv.size && uIdx < rawYuv.size && dstPos + 1 < nv21.size) {
-                        nv21[dstPos++] = rawYuv[vIdx]
-                        nv21[dstPos++] = rawYuv[uIdx]
+                    if (dstPos + 1 < nv21.size) {
+                        if (vIdx in 0 until rawYuv.size && uIdx in 0 until rawYuv.size) {
+                            nv21[dstPos++] = rawYuv[vIdx]
+                            nv21[dstPos++] = rawYuv[uIdx]
+                        } else {
+                            dstPos += 2
+                        }
                     }
                 }
             }
