@@ -9,17 +9,23 @@ import 'gradient_button.dart';
 class BotTokenGuideSheet extends StatefulWidget {
   final StorageService storageService;
   final VoidCallback? onTokenSaved;
+  final String? contextMessage;
+  final bool autoCloseOnSave;
 
   const BotTokenGuideSheet({
     super.key,
     required this.storageService,
     this.onTokenSaved,
+    this.contextMessage,
+    this.autoCloseOnSave = false,
   });
 
   static Future<void> show(
     BuildContext context, {
     required StorageService storageService,
     VoidCallback? onTokenSaved,
+    String? contextMessage,
+    bool autoCloseOnSave = false,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -28,6 +34,8 @@ class BotTokenGuideSheet extends StatefulWidget {
       builder: (ctx) => BotTokenGuideSheet(
         storageService: storageService,
         onTokenSaved: onTokenSaved,
+        contextMessage: contextMessage,
+        autoCloseOnSave: autoCloseOnSave,
       ),
     );
   }
@@ -109,6 +117,9 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
             'Harika! @$botUser botu başarıyla doğrulandı ve kaydedildi.';
       });
       widget.onTokenSaved?.call();
+      if (widget.autoCloseOnSave && mounted) {
+        Navigator.of(context).pop(true);
+      }
     } else {
       setState(() {
         _isTesting = false;
@@ -192,7 +203,7 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '1 dakikada ücretsiz kendi botunuzu kurun',
+                        widget.contextMessage ?? '1 dakikada ücretsiz kendi botunuzu kurun',
                         style: TextStyle(fontSize: 13, color: secCol),
                       ),
                     ],
