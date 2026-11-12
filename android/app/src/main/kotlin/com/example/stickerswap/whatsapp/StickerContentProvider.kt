@@ -173,7 +173,7 @@ class StickerContentProvider : ContentProvider() {
         return if (file.exists() && file.isFile && isPathSandboxed(context, file)) file else null
     }
 
-    private fun resolveAssetFile(context: Context, identifier: String?, fileName: String): File? {
+    internal fun resolveAssetFile(context: Context, identifier: String?, fileName: String): File? {
         val candidate = resolveAssetFileCandidate(context, identifier, fileName) ?: return null
         if (!candidate.isFile || !isPathSandboxed(context, candidate)) {
             if (BuildConfig.DEBUG) {
