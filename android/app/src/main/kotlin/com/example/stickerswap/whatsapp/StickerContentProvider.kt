@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import com.example.stickerswap.BuildConfig
 import java.io.File
 import java.io.FileNotFoundException
 
@@ -41,7 +42,9 @@ class StickerContentProvider : ContentProvider() {
         uriMatcher.addURI(authority, "stickers_asset/*/*", STICKER_ASSET)
         uriMatcher.addURI(authority, "stickers_asset/*/*/*", STICKER_ASSET)
 
-        Log.d(TAG, "Initialized StickerContentProvider with authority: $authority")
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "Initialized StickerContentProvider with authority: $authority")
+        }
         return true
     }
 
@@ -117,17 +120,25 @@ class StickerContentProvider : ContentProvider() {
 
         val file = resolveAssetFile(context, identifier, fileName)
         if (file != null && file.exists()) {
-            Log.i(TAG, "openAssetFile SUCCESS: uri=$uri, path=${file.absolutePath}, size=${file.length()}")
+            if (BuildConfig.DEBUG) {
+                Log.i(TAG, "openAssetFile SUCCESS: uri=$uri, path=${file.absolutePath}, size=${file.length()}")
+            }
             return try {
                 val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
                 AssetFileDescriptor(pfd, 0L, AssetFileDescriptor.UNKNOWN_LENGTH)
             } catch (e: Exception) {
-                Log.e(TAG, "Error opening asset file: ${file.absolutePath}, falling back to placeholder", e)
+                if (BuildConfig.DEBUG) {
+                    Log.e(TAG, "Error opening asset file: ${file.absolutePath}, falling back to placeholder", e)
+                } else {
+                    Log.e(TAG, "Error opening asset file, falling back to placeholder")
+                }
                 getOrCreateFallbackAsset(context, fileName)
             }
         }
 
-        Log.w(TAG, "Asset file not found on disk: $fileName (identifier: $identifier, uri: $uri). Serving fallback placeholder.")
+        if (BuildConfig.DEBUG) {
+            Log.w(TAG, "Asset file not found on disk: $fileName (identifier: $identifier, uri: $uri). Serving fallback placeholder.")
+        }
         return getOrCreateFallbackAsset(context, fileName)
     }
 
@@ -165,7 +176,11 @@ class StickerContentProvider : ContentProvider() {
     private fun resolveAssetFile(context: Context, identifier: String?, fileName: String): File? {
         val candidate = resolveAssetFileCandidate(context, identifier, fileName) ?: return null
         if (!candidate.isFile || !isPathSandboxed(context, candidate)) {
-            Log.w(TAG, "Blocked non-sandboxed asset path request: ${candidate.path}")
+            if (BuildConfig.DEBUG) {
+                Log.w(TAG, "Blocked non-sandboxed asset path request: ${candidate.path}")
+            } else {
+                Log.w(TAG, "Blocked non-sandboxed asset path request")
+            }
             return null
         }
         return candidate
@@ -345,7 +360,9 @@ class StickerContentProvider : ContentProvider() {
         }
 
         return if (!identifier.isNullOrEmpty()) {
-            Log.d(TAG, "delete called for identifier: $identifier")
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "delete called for identifier: $identifier")
+            }
             StickerPackStorage.deleteStickerPack(context, identifier)
             try {
                 val authority = getAuthority(context.packageName)

@@ -103,10 +103,12 @@ class StickerProcessor {
       }
 
       if (frames.isNotEmpty) {
-        debugPrint(
-          'processVideoSticker($baseName): extracted=${frames.length} frames, '
-          'duration=${totalDurationMs}ms, delay=${frameDelayMs}ms',
-        );
+        if (kDebugMode) {
+          debugPrint(
+            'processVideoSticker($baseName): extracted=${frames.length} frames, '
+            'duration=${totalDurationMs}ms, delay=${frameDelayMs}ms',
+          );
+        }
         // Offload heavy image decoding and WebP compression to background Isolate
         return await Isolate.run(() {
           return _createAnimatedWebpFromPngFramesSync(
@@ -119,7 +121,9 @@ class StickerProcessor {
         });
       }
     } catch (e) {
-      debugPrint('Video sticker extraction error: $e');
+      if (kDebugMode) {
+        debugPrint('Video sticker extraction error: $e');
+      }
     }
 
     if (fallbackThumbnailBytes != null && fallbackThumbnailBytes.isNotEmpty) {
@@ -219,10 +223,12 @@ class StickerProcessor {
       }
 
       if (frames.isNotEmpty) {
-        debugPrint(
-          'processLottieSticker($baseName): rendered=${frames.length} frames, '
-          'duration=${totalDurationMs}ms, delay=${frameDelayMs}ms',
-        );
+        if (kDebugMode) {
+          debugPrint(
+            'processLottieSticker($baseName): rendered=${frames.length} frames, '
+            'duration=${totalDurationMs}ms, delay=${frameDelayMs}ms',
+          );
+        }
         return await Isolate.run(() {
           return _createAnimatedWebpFromPngFramesSync(
             pngFrames: frames,
@@ -234,7 +240,9 @@ class StickerProcessor {
         });
       }
     } catch (e) {
-      debugPrint('Lottie sticker conversion error: $e');
+      if (kDebugMode) {
+        debugPrint('Lottie sticker conversion error: $e');
+      }
     }
 
     if (fallbackThumbnailBytes != null && fallbackThumbnailBytes.isNotEmpty) {
