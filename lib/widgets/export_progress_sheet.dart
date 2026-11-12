@@ -8,6 +8,7 @@ import '../services/whatsapp_service.dart';
 import '../theme/app_theme.dart';
 import 'gradient_button.dart';
 import 'installed_pack_cache_dialog.dart';
+import 'pre_flight_dialog.dart';
 
 /// Displays real-time sticker preparation progress, percentage, and cancel control
 /// without triggering full-screen rebuilds.
@@ -174,6 +175,17 @@ class _MultiPartExportSheetState extends State<MultiPartExportSheet> {
     });
 
     try {
+      final validatedStickers = await runPreFlightValidationGate(
+        context: context,
+        trayPath: part.trayPath,
+        stickerData: part.stickerData,
+        isAnimatedPack: part.isAnimated,
+      );
+      if (validatedStickers == null || !mounted) {
+        part.isCancelled = true;
+        return;
+      }
+
       final targetPackId = await resolveAnimatedPackExportIdentifier(
         context: context,
         baseIdentifier: part.packId,
@@ -192,7 +204,7 @@ class _MultiPartExportSheetState extends State<MultiPartExportSheet> {
         name: part.packName,
         publisher: part.publisher,
         trayPath: part.trayPath,
-        stickerData: part.stickerData,
+        stickerData: validatedStickers,
         animatedStickerPack: part.isAnimated,
       );
 

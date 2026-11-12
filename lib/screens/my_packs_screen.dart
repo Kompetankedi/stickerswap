@@ -11,6 +11,7 @@ import '../widgets/glass_card.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/installed_pack_cache_dialog.dart';
 import '../widgets/pack_metadata_dialog.dart';
+import '../widgets/pre_flight_dialog.dart';
 import '../widgets/status_badge.dart';
 
 /// "My Packs" screen – lists locally saved sticker packs with storage info,
@@ -94,6 +95,24 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
         if (!shouldContinue || !mounted) return;
       }
 
+      final stickerData = <Map<String, dynamic>>[];
+      for (int i = 0; i < resolvedPaths.length; i++) {
+        final rawEmoji = i < pack.emojis.length ? pack.emojis[i] : '⭐';
+        stickerData.add({
+          'path': resolvedPaths[i],
+          'emojis': WhatsAppService.sanitizeEmojis(rawEmoji),
+        });
+      }
+
+      if (!mounted) return;
+      final validatedStickers = await runPreFlightValidationGate(
+        context: context,
+        trayPath: pack.trayImagePath,
+        stickerData: stickerData,
+        isAnimatedPack: pack.isAnimated,
+      );
+      if (validatedStickers == null || !mounted) return;
+
       final targetIdentifier = await resolveAnimatedPackExportIdentifier(
         context: context,
         baseIdentifier: pack.identifier,
@@ -104,21 +123,12 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
       );
       if (targetIdentifier == null || !mounted) return;
 
-      final stickerData = <Map<String, dynamic>>[];
-      for (int i = 0; i < resolvedPaths.length; i++) {
-        final rawEmoji = i < pack.emojis.length ? pack.emojis[i] : '⭐';
-        stickerData.add({
-          'path': resolvedPaths[i],
-          'emojis': WhatsAppService.sanitizeEmojis(rawEmoji),
-        });
-      }
-
       final result = await _whatsappService.addStickerPack(
         identifier: targetIdentifier,
         name: pack.name,
         publisher: pack.publisher,
         trayPath: pack.trayImagePath,
-        stickerData: stickerData,
+        stickerData: validatedStickers,
         animatedStickerPack: pack.isAnimated,
       );
 
