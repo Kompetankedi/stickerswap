@@ -65,7 +65,7 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 
 ### 1.1 `README.md` ve Kullanıcı Bilgilendirmesi
 - [x] `README.md` içindeki *"Uygulama hazır olarak gelir"* ifadesini kaldır; Telegram Bot Token'ın neden gerekli olduğunu ve @BotFather ile ~1 dakikada nasıl alınacağını net şekilde açıkla.
-- [x] Platform destek tablosunu güncelle (Android: Tam Destek; iOS: Önizleme aktif, WhatsApp doğrudan aktarım geliştirme aşamasında).
+- [x] Platform destek tablosunu güncelle (Android: Tam Destek; iOS: Desteklenmiyor / aktif geliştirme planlanmıyor — yalnızca Android odaklı).
 - [x] `CuratedPack` UI'da henüz aktif değilse README'deki ifadeyi güncel duruma göre düzelt (veya Faz 3.2 ile birlikte senkronize et).
 - [x] İlk açılışta/link aramada token tanımlı değilse kullanıcıya kırmızı hata yerine dostane "İlk Kurulum / Token Ekle" yönlendirmesi (banner/sheet) ekle.
 - [x] Örnek commit: `docs(readme): clarify bot token requirement and platform support`
@@ -132,7 +132,7 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 
 ### 3.3 Hukuki Sorumluluk Reddi & iOS Çökme Koruması
 - [ ] `lib/screens/settings_screen.dart` (ve gerekirse ilk kurulum akışı) içine telif hakları, bağımsız araç sorumluluk reddi (Telegram/WhatsApp ile resmi bağ olmadığı) ve kullanım bilgilendirmesi bölümü ekle.
-- [ ] `lib/services/whatsapp_service.dart` / UI tarafında iOS platformu algılandığında `MissingPluginException` fırlatmak yerine kullanıcıya *"iOS doğrudan WhatsApp aktarımı geliştirme aşamasındadır"* bilgilendirme diyaloğu göster.
+- [ ] `lib/services/whatsapp_service.dart` / UI tarafında iOS platformu algılandığında `MissingPluginException` fırlatmak yerine kullanıcıya *"StickerSwap yalnızca Android için geliştirilmektedir; iOS WhatsApp aktarımı desteklenmemektedir"* bilgilendirme diyaloğu göster.
 - [ ] Örnek commit: `feat(compliance): add legal disclaimer in settings and safe iOS export fallback`
 
 ### Faz 3 Çıkış Kriteri
