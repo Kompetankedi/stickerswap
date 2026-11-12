@@ -8,6 +8,7 @@ import '../widgets/gradient_button.dart';
 import '../widgets/installed_pack_cache_dialog.dart';
 import '../widgets/live_hero_preview.dart';
 import '../widgets/pack_metadata_dialog.dart';
+import '../widgets/pre_flight_dialog.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/sticker_selection_grid.dart';
 
@@ -95,6 +96,18 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
   }
 
   Future<void> _exportSinglePart(PreparedPackPart part) async {
+    final validatedStickers = await runPreFlightValidationGate(
+      context: context,
+      trayPath: part.trayPath,
+      stickerData: part.stickerData,
+      isAnimatedPack: part.isAnimated,
+      stickerProcessor: _orchestrator.stickerProcessor,
+    );
+    if (validatedStickers == null || !mounted) {
+      if (mounted) _showSnackBar('WhatsApp\'a ekleme iptal edildi.');
+      return;
+    }
+
     final targetPackId = await resolveAnimatedPackExportIdentifier(
       context: context,
       baseIdentifier: part.packId,
@@ -113,7 +126,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
       name: part.packName,
       publisher: part.publisher,
       trayPath: part.trayPath,
-      stickerData: part.stickerData,
+      stickerData: validatedStickers,
       animatedStickerPack: part.isAnimated,
     );
     if (!mounted) return;
