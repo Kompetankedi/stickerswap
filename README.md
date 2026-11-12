@@ -10,8 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Android-Full%20Support-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android: Full Support" />
-  <img src="https://img.shields.io/badge/iOS-Preview%20Active-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="iOS: Preview Active" />
+  <img src="https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Platform: Android" />
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?style=for-the-badge&logo=flutter&logoColor=white" alt="Flutter" />
   <img src="https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge" alt="License: MIT" />
 </p>
@@ -35,7 +34,7 @@
 * 🎬 **Tüm Çıkartma Türleri:** Sabit görseller, hareketli Lottie animasyonları (`.tgs`) ve video çıkartmalarını (`.webm`) WhatsApp uyumlu WebP formatına dönüştürür.
 * 🔗 **Kolay Paylaşım:** Telegram'da bir paketi "Paylaş" deyip doğrudan **StickerSwap**'ı seçebilir veya bağlantıyı yapıştırabilirsiniz.
 * ✏️ **Özelleştirme ve Kayıtlı Paketler:** Aktarım öncesi paket/yayıncı adını düzenleyin, 30'dan büyük paketleri otomatik bölün ve son aramalarınıza hızlıca erişin.
-* 🔒 **Tamamen Gizli ve Güvenli:** Merkezi bir ara sunucu kullanılmaz. Tüm indirme ve dönüştürme işlemleri telefonunuzda yapılır; Bot Token'ınız cihazın güvenli deposunda (Keystore / Keychain) şifrelenerek saklanır.
+* 🔒 **Tamamen Gizli ve Güvenli:** Merkezi bir ara sunucu kullanılmaz. Tüm indirme ve dönüştürme işlemleri telefonunuzda yapılır; Bot Token'ınız cihazın güvenli deposunda (Android Keystore) şifrelenerek saklanır.
 
 ---
 
@@ -44,7 +43,7 @@
 | Platform | Durum | Açıklama |
 | :--- | :---: | :--- |
 | **Android** | ✅ **Tam Destek** | WhatsApp & WhatsApp Business doğrudan çıkartma paketi aktarımı tam olarak desteklenir. |
-| **iOS** | ⏳ **Önizleme Aktif** | Çıkartma paketi indirme ve önizleme aktiftir; WhatsApp doğrudan aktarım entegrasyonu geliştirme aşamasındadır. |
+| **iOS** | ⛔ **Desteklenmiyor** | StickerSwap yalnızca **Android** odaklı geliştirilmektedir; iOS için aktif geliştirme veya destek planlanmamaktadır. |
 
 ---
 
@@ -91,7 +90,7 @@ flowchart LR
 * 🎬 **Full Format Support:** Converts static stickers, vector animations (`.tgs`), and video stickers (`.webm`) into WhatsApp-compliant WebP packs.
 * 🔗 **Quick Share Integration:** Tap "Share" on any sticker pack inside Telegram and choose **StickerSwap**, or paste the link directly.
 * ✏️ **Customization & Saved Packs:** Edit pack/publisher names before export, auto-split packs larger than 30 stickers, and revisit recent searches.
-* 🔒 **Privacy First:** No third-party backend or proxy server is used. All processing runs locally on your phone, and your Bot Token is encrypted in native secure storage (Android Keystore / iOS Keychain).
+* 🔒 **Privacy First:** No third-party backend or proxy server is used. All processing runs locally on your phone, and your Bot Token is encrypted in native secure storage (Android Keystore).
 
 ---
 
@@ -100,7 +99,7 @@ flowchart LR
 | Platform | Status | Notes |
 | :--- | :---: | :--- |
 | **Android** | ✅ **Full Support** | Direct export to WhatsApp & WhatsApp Business is fully supported. |
-| **iOS** | ⏳ **Preview Active** | Sticker pack fetching and preview are active; direct WhatsApp export is currently in development. |
+| **iOS** | ⛔ **Not Supported** | StickerSwap is developed exclusively for **Android**; iOS support is not actively developed or planned. |
 
 ---
 
