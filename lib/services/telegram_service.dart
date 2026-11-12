@@ -1,6 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -12,7 +13,38 @@ import '../models/telegram_sticker_set.dart';
 class TelegramService {
   static final TelegramService _instance = TelegramService._internal();
   factory TelegramService() => _instance;
-  TelegramService._internal();
+
+  TelegramService._internal({
+    http.Client? httpClient,
+    Duration retryBaseDelay = const Duration(milliseconds: 500),
+    Duration requestTimeout = const Duration(seconds: 15),
+    Future<Directory> Function()? documentsDirProvider,
+  })  : _httpClient = httpClient ?? http.Client(),
+        _retryBaseDelay = retryBaseDelay,
+        _requestTimeout = requestTimeout,
+        _documentsDirProvider =
+            documentsDirProvider ?? getApplicationDocumentsDirectory;
+
+  /// Creates an isolated instance for unit tests using `MockClient`.
+  @visibleForTesting
+  factory TelegramService.withClient(
+    http.Client client, {
+    Duration retryBaseDelay = const Duration(milliseconds: 5),
+    Duration requestTimeout = const Duration(seconds: 5),
+    Future<Directory> Function()? documentsDirProvider,
+  }) {
+    return TelegramService._internal(
+      httpClient: client,
+      retryBaseDelay: retryBaseDelay,
+      requestTimeout: requestTimeout,
+      documentsDirProvider: documentsDirProvider,
+    );
+  }
+
+  final http.Client _httpClient;
+  final Duration _retryBaseDelay;
+  final Duration _requestTimeout;
+  final Future<Directory> Function() _documentsDirProvider;
 
   String _botToken = '';
   static const String _baseUrl = 'https://api.telegram.org/bot';
@@ -30,6 +62,74 @@ class TelegramService {
 
   String get _apiBase => '$_baseUrl$_botToken';
 
+  Map<String, dynamic> _decodeJsonObject(String body) {
+    if (body.trim().isEmpty) {
+      throw const FormatException('Telegram API boş yanıt döndürdü.');
+    }
+    final decoded = jsonDecode(body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Telegram API beklenmeyen JSON formatı döndürdü.');
+    }
+    return decoded;
+  }
+
+  Duration _computeRateLimitDelay(http.Response response, int attempt) {
+    final retryAfterRaw = response.headers['retry-after'];
+    final retrySeconds =
+        retryAfterRaw != null ? int.tryParse(retryAfterRaw.trim()) : null;
+    if (retrySeconds != null && retrySeconds > 0) {
+      // Bound server-requested delay so fast unit tests remain responsive when backoff is tiny.
+      final cappedMs = (_retryBaseDelay.inMilliseconds * retrySeconds * 2)
+          .clamp(_retryBaseDelay.inMilliseconds, retrySeconds * 1000);
+      return Duration(milliseconds: cappedMs);
+    }
+    return Duration(milliseconds: _retryBaseDelay.inMilliseconds * attempt);
+  }
+
+  Future<http.Response> _getWithRetry(
+    Uri uri, {
+    int maxAttempts = 3,
+    Duration? timeout,
+  }) async {
+    final effectiveTimeout = timeout ?? _requestTimeout;
+    int attempts = 0;
+
+    while (true) {
+      attempts++;
+      try {
+        final response =
+            await _httpClient.get(uri).timeout(effectiveTimeout);
+
+        if (response.statusCode == 429) {
+          if (attempts >= maxAttempts) {
+            throw Exception(
+              'Telegram API hız sınırına ulaşıldı (429 Too Many Requests). '
+              'Lütfen biraz sonra tekrar deneyin.',
+            );
+          }
+          await Future<void>.delayed(_computeRateLimitDelay(response, attempts));
+          continue;
+        }
+
+        if (response.statusCode >= 500 && attempts < maxAttempts) {
+          await Future<void>.delayed(
+            Duration(milliseconds: _retryBaseDelay.inMilliseconds * attempts),
+          );
+          continue;
+        }
+
+        return response;
+      } catch (e) {
+        if (attempts >= maxAttempts) {
+          rethrow;
+        }
+        await Future<void>.delayed(
+          Duration(milliseconds: _retryBaseDelay.inMilliseconds * attempts),
+        );
+      }
+    }
+  }
+
   /// Validates whether the current bot token is working.
   Future<Map<String, dynamic>> validateToken([String? tokenToTest]) async {
     final token = tokenToTest ?? _botToken;
@@ -38,15 +138,24 @@ class TelegramService {
     }
 
     try {
-      final response = await http
-          .get(Uri.parse('$_baseUrl${token.trim()}/getMe'))
-          .timeout(const Duration(seconds: 10));
-      final data = jsonDecode(response.body);
+      final response = await _getWithRetry(
+        Uri.parse('$_baseUrl${token.trim()}/getMe'),
+        maxAttempts: 2,
+        timeout: const Duration(seconds: 10),
+      );
+      if (response.statusCode == 401) {
+        return {
+          'ok': false,
+          'error': 'Unauthorized: Bot Token geçersiz (401)',
+        };
+      }
+      final data = _decodeJsonObject(response.body);
       if (data['ok'] == true) {
+        final result = data['result'];
         return {
           'ok': true,
-          'botName': data['result']?['first_name'] ?? 'Unknown',
-          'username': data['result']?['username'] ?? '',
+          'botName': result is Map ? (result['first_name'] ?? 'Unknown') : 'Unknown',
+          'username': result is Map ? (result['username'] ?? '') : '',
         };
       } else {
         return {
@@ -54,6 +163,8 @@ class TelegramService {
           'error': data['description'] ?? 'Geçersiz token',
         };
       }
+    } on FormatException catch (e) {
+      return {'ok': false, 'error': e.message};
     } catch (e) {
       return {'ok': false, 'error': e.toString()};
     }
@@ -96,15 +207,21 @@ class TelegramService {
       );
     }
 
-    final response = await http
-        .get(Uri.parse('$_apiBase/getStickerSet?name=$setName'))
-        .timeout(const Duration(seconds: 15));
+    final response = await _getWithRetry(
+      Uri.parse('$_apiBase/getStickerSet?name=$setName'),
+    );
 
-    final data = jsonDecode(response.body);
+    if (response.statusCode == 401) {
+      throw Exception(
+        'Girdiğiniz Bot Token geçersiz veya yetkisiz (Unauthorized).\n'
+        'Lütfen Ayarlar sekmesinden geçerli bir Bot Token girin.',
+      );
+    }
+
+    final data = _decodeJsonObject(response.body);
     if (data['ok'] != true) {
       final desc = data['description']?.toString() ?? '';
-      if (response.statusCode == 401 ||
-          desc.toLowerCase().contains('unauthorized')) {
+      if (desc.toLowerCase().contains('unauthorized')) {
         throw Exception(
           'Girdiğiniz Bot Token geçersiz veya yetkisiz (Unauthorized).\n'
           'Lütfen Ayarlar sekmesinden geçerli bir Bot Token girin.',
@@ -114,7 +231,11 @@ class TelegramService {
         desc.isNotEmpty ? desc : 'Sticker paketi bulunamadı.',
       );
     }
-    return TelegramStickerSet.fromJson(data['result']);
+    final result = data['result'];
+    if (result is! Map<String, dynamic>) {
+      throw const FormatException('Telegram API geçersiz paket verisi döndürdü.');
+    }
+    return TelegramStickerSet.fromJson(result);
   }
 
   /// Retrieves the download URL for a given file_id with retry.
@@ -123,27 +244,26 @@ class TelegramService {
       throw Exception('Bot Token tanımlanmamış.');
     }
 
-    int attempts = 0;
-    while (true) {
-      attempts++;
-      try {
-        final response = await http
-            .get(Uri.parse('$_apiBase/getFile?file_id=$fileId'))
-            .timeout(const Duration(seconds: 15));
+    final response = await _getWithRetry(
+      Uri.parse('$_apiBase/getFile?file_id=$fileId'),
+    );
 
-        final data = jsonDecode(response.body);
-        if (data['ok'] != true) {
-          throw Exception('Dosya yolu alınamadı: ${data['description'] ?? 'Hata'}');
-        }
-        final filePath = data['result']['file_path'];
-        return 'https://api.telegram.org/file/bot$_botToken/$filePath';
-      } catch (e) {
-        if (attempts >= 3) {
-          rethrow;
-        }
-        await Future.delayed(Duration(milliseconds: 500 * attempts));
-      }
+    if (response.statusCode == 401) {
+      throw Exception('Bot Token yetkisiz (Unauthorized).');
     }
+
+    final data = _decodeJsonObject(response.body);
+    if (data['ok'] != true) {
+      throw Exception(
+        'Dosya yolu alınamadı: ${data['description'] ?? 'Hata'}',
+      );
+    }
+    final result = data['result'];
+    final filePath = result is Map ? result['file_path'] as String? : null;
+    if (filePath == null || filePath.isEmpty) {
+      throw const FormatException('Telegram API dosya yolunu döndürmedi.');
+    }
+    return 'https://api.telegram.org/file/bot$_botToken/$filePath';
   }
 
   /// Downloads a sticker file to local storage and returns its path.
@@ -153,7 +273,7 @@ class TelegramService {
     TelegramSticker sticker,
     String packName,
   ) async {
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await _documentsDirProvider();
     final packDir = Directory(p.join(dir.path, 'stickers', packName));
     if (!await packDir.exists()) {
       await packDir.create(recursive: true);
@@ -172,52 +292,32 @@ class TelegramService {
       return filePath;
     }
 
-    int attempts = 0;
-    while (true) {
-      attempts++;
-      try {
-        final url = await getFileUrl(sticker.fileId);
-        final response = await http
-            .get(Uri.parse(url))
-            .timeout(const Duration(seconds: 30));
+    final url = await getFileUrl(sticker.fileId);
+    final response = await _getWithRetry(
+      Uri.parse(url),
+      timeout: const Duration(seconds: 30),
+    );
 
-        if (response.statusCode != 200) {
-          throw Exception('Sticker indirilemedi (HTTP ${response.statusCode})');
-        }
-
-        final tmpPath = '$filePath.tmp';
-        final tmpFile = File(tmpPath);
-        await tmpFile.writeAsBytes(response.bodyBytes);
-        await tmpFile.rename(filePath);
-        return filePath;
-      } catch (e) {
-        if (attempts >= 3) {
-          rethrow;
-        }
-        await Future.delayed(Duration(milliseconds: 1000 * attempts));
-      }
+    if (response.statusCode != 200) {
+      throw Exception('Sticker indirilemedi (HTTP ${response.statusCode})');
     }
+
+    final tmpPath = '$filePath.tmp';
+    final tmpFile = File(tmpPath);
+    await tmpFile.writeAsBytes(response.bodyBytes);
+    await tmpFile.rename(filePath);
+    return filePath;
   }
 
   /// Downloads a thumbnail for a sticker (used for previews) with retry.
   Future<Uint8List?> downloadThumbnail(String fileId) async {
-    int attempts = 0;
-    while (attempts < 3) {
-      attempts++;
-      try {
-        final url = await getFileUrl(fileId);
-        final response = await http
-            .get(Uri.parse(url))
-            .timeout(const Duration(seconds: 15));
-        if (response.statusCode == 200) {
-          return response.bodyBytes;
-        }
-      } catch (_) {
-        if (attempts < 3) {
-          await Future.delayed(Duration(milliseconds: 500 * attempts));
-        }
+    try {
+      final url = await getFileUrl(fileId);
+      final response = await _getWithRetry(Uri.parse(url));
+      if (response.statusCode == 200) {
+        return response.bodyBytes;
       }
-    }
+    } catch (_) {}
     return null;
   }
 }
