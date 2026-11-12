@@ -256,13 +256,15 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        Log.i(
-            "MainActivity",
-            "extractFrames[${outcome.pathUsed}] file=${File(videoPath).name} " +
-                "frames=${outcome.frames.size}/${outcome.targetFrameCount} durationMs=${outcome.durationMs} " +
-                "frameDelayMs=${outcome.frameDelayMs} retrieverDurUs=$retrieverDurationUs " +
-                "streamDurUs=$streamDurationUs hw=${primaryOutcome?.frames?.size ?: -1} sw=${softwareOutcome?.frames?.size ?: -1}"
-        )
+        if (BuildConfig.DEBUG) {
+            Log.i(
+                "MainActivity",
+                "extractFrames[${outcome.pathUsed}] file=${File(videoPath).name} " +
+                    "frames=${outcome.frames.size}/${outcome.targetFrameCount} durationMs=${outcome.durationMs} " +
+                    "frameDelayMs=${outcome.frameDelayMs} retrieverDurUs=$retrieverDurationUs " +
+                    "streamDurUs=$streamDurationUs hw=${primaryOutcome?.frames?.size ?: -1} sw=${softwareOutcome?.frames?.size ?: -1}"
+            )
+        }
 
         return mapOf(
             "frames" to outcome.frames,

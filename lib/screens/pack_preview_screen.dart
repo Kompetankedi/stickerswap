@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -549,7 +550,9 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
                 });
               }
             } catch (err) {
-              debugPrint('Error preparing sticker ${sticker.fileId}: $err');
+              if (kDebugMode) {
+                debugPrint('Error preparing sticker ${sticker.fileId}: $err');
+              }
               rethrow;
             }
           }
@@ -672,7 +675,9 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
         await _showMultiPartExportSheet(preparedParts);
       }
     } catch (e, stackTrace) {
-      debugPrint('❌ WhatsApp Export Error: $e\n$stackTrace');
+      if (kDebugMode) {
+        debugPrint('❌ WhatsApp Export Error: $e\n$stackTrace');
+      }
       if (mounted && !_isCancelled) {
         _showSnackBar(
           'Hata: ${e.toString().replaceAll('Exception: ', '')}',
