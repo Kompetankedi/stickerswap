@@ -10,6 +10,7 @@ import '../services/whatsapp_service.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/installed_pack_cache_dialog.dart';
+import '../widgets/ios_unsupported_dialog.dart';
 import '../widgets/pack_metadata_dialog.dart';
 import '../widgets/pre_flight_dialog.dart';
 import '../widgets/status_badge.dart';
@@ -86,6 +87,10 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
     bool isNameUpdated = false,
   }) async {
     try {
+      if (await guardUnsupportedIosExport(context, _whatsappService)) {
+        return;
+      }
+
       HapticFeedback.lightImpact();
       final resolvedPaths = pack.stickerPaths.map(_resolveStickerPath).toList();
       final hasLegacyFiles =
@@ -147,6 +152,10 @@ class _MyPacksScreenState extends State<MyPacksScreen> {
               ),
             ),
           );
+        }
+      } else if (result.isUnsupportedPlatform) {
+        if (mounted) {
+          await showIosUnsupportedDialog(context, message: result.errorMessage);
         }
       } else if (result.isCancelled) {
         if (mounted) {

@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../widgets/export_progress_sheet.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/installed_pack_cache_dialog.dart';
+import '../widgets/ios_unsupported_dialog.dart';
 import '../widgets/live_hero_preview.dart';
 import '../widgets/pack_metadata_dialog.dart';
 import '../widgets/pre_flight_dialog.dart';
@@ -65,6 +66,13 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
   }
 
   Future<void> _exportToWhatsApp() async {
+    if (await guardUnsupportedIosExport(
+      context,
+      _orchestrator.whatsappService,
+    )) {
+      return;
+    }
+
     if (_orchestrator.selectedCount < 3) {
       _showSnackBar('WhatsApp en az 3 çıkartma gerektirir.', isError: true);
       return;
@@ -135,6 +143,8 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
       await _orchestrator.markPackAddedToWhatsApp(part.packId);
       HapticFeedback.mediumImpact();
       _showSnackBar('✅ Paket başarıyla WhatsApp\'a eklendi!');
+    } else if (result.isUnsupportedPlatform) {
+      await showIosUnsupportedDialog(context, message: result.errorMessage);
     } else if (result.isCancelled) {
       _showSnackBar('WhatsApp\'a ekleme iptal edildi.');
     } else {

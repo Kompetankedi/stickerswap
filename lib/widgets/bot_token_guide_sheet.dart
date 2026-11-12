@@ -501,6 +501,31 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.warning.withAlpha(isDark ? 22 : 16),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.gavel_rounded,
+                        size: 17,
+                        color: AppTheme.warning,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'StickerSwap, Telegram veya WhatsApp ile resmi bağı olmayan bağımsız bir araçtır. Aktarılan içeriklerin telif sorumluluğu kullanıcıya aittir.',
+                          style: TextStyle(fontSize: 11.5, color: secCol, height: 1.35),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 24),
               ],
             ),

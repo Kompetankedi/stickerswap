@@ -752,6 +752,122 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               const SizedBox(height: 24),
 
+              // ─── Legal Disclaimer & Copyright Section ─────
+              _SectionTitle(
+                icon: Icons.gavel_rounded,
+                title: 'Yasal Uyarı & Sorumluluk Reddi',
+                color: AppTheme.warning,
+              ).animate().fadeIn(delay: 580.ms),
+              const SizedBox(height: 10),
+              GlassCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.link_off_rounded,
+                          size: 17,
+                          color: AppTheme.warning,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Bağımsız Araç Bildirimi',
+                                style: TextStyle(
+                                  color: textCol,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'StickerSwap, Telegram veya WhatsApp (Meta) ile hiçbir resmi bağı, ortaklığı ya da onayı bulunmayan bağımsız bir köprü aracıdır.',
+                                style: TextStyle(
+                                  color: secCol,
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    Divider(
+                      color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                      height: 22,
+                    ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.copyright_rounded,
+                          size: 17,
+                          color: AppTheme.primaryBlue,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Telif Hakları & Kullanım Sorumluluğu',
+                                style: TextStyle(
+                                  color: textCol,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Aktarılan tüm çıkartma paketlerinin telif ve fikri mülkiyet hakları ilgili eser sahiplerine aittir. Kullanıcılar aktardıkları içeriklerin kullanım hakkından bizzat sorumludur.',
+                                style: TextStyle(
+                                  color: secCol,
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    Divider(
+                      color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                      height: 22,
+                    ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.devices_rounded,
+                          size: 17,
+                          color: AppTheme.success,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Tüm indirme ve WebP dönüştürme işlemleri cihazınızda yerel olarak yapılır; veriler üçüncü parti sunuculara gönderilmez.',
+                            style: TextStyle(
+                              color: secCol,
+                              fontSize: 12,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ).animate().fadeIn(delay: 590.ms),
+
+              const SizedBox(height: 24),
+
               // ─── About Section ────────────────────────────
               _SectionTitle(
                 icon: Icons.info_outline_rounded,
