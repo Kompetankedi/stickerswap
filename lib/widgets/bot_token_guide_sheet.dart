@@ -45,9 +45,16 @@ class _BotTokenGuideSheetState extends State<BotTokenGuideSheet> {
   @override
   void initState() {
     super.initState();
-    final saved = widget.storageService.getBotToken();
-    if (saved != null) {
-      _tokenController.text = saved;
+    _loadSavedToken();
+  }
+
+  Future<void> _loadSavedToken() async {
+    final saved = await widget.storageService.getBotToken();
+    if (!mounted) return;
+    if (saved != null && saved.isNotEmpty && _tokenController.text.isEmpty) {
+      setState(() {
+        _tokenController.text = saved;
+      });
     }
   }
 

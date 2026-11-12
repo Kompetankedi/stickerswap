@@ -66,7 +66,7 @@ class _PackPreviewScreenState extends State<PackPreviewScreen> {
 
   Future<void> _initAndLoad() async {
     await _storageService.init();
-    final savedToken = _storageService.getBotToken();
+    final savedToken = await _storageService.getBotToken();
     if (savedToken != null && savedToken.isNotEmpty) {
       _telegramService.setBotToken(savedToken);
     }

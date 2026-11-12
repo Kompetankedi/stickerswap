@@ -17,7 +17,7 @@ void main() async {
   ThemeController.instance.init(storage);
 
   // Load saved bot token into TelegramService singleton
-  final savedToken = storage.getBotToken();
+  final savedToken = await storage.getBotToken();
   if (savedToken != null && savedToken.trim().isNotEmpty) {
     TelegramService().setBotToken(savedToken);
   }

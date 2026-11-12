@@ -44,13 +44,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     await _storageService.init();
-    final savedToken = _storageService.getBotToken();
+    final savedToken = await _storageService.getBotToken();
+    if (!mounted) return;
     if (savedToken != null) {
       _tokenController.text = savedToken;
       _telegramService.setBotToken(savedToken);
     }
     _publisherController.text = _storageService.getPublisherName();
-    if (mounted) setState(() {});
+    setState(() {});
   }
 
   Future<void> _checkWhatsAppStatus() async {
@@ -94,13 +95,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     stopwatch.stop();
 
     if (mounted) {
+      final isValid = result['ok'] == true;
+      if (isValid) {
+        await _storageService.setBotToken(token);
+      }
+      if (!mounted) return;
       setState(() {
         _isTestingToken = false;
-        _tokenValid = result['ok'] == true;
+        _tokenValid = isValid;
         if (_tokenValid) {
           _tokenTestResult =
               '✅ Bağlantı başarılı (${stopwatch.elapsedMilliseconds} ms)\nBot: @${result['username']}';
-          _storageService.setBotToken(token);
         } else {
           _tokenTestResult = '❌ Token geçersiz veya bot yanıt vermiyor.';
         }
