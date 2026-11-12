@@ -43,3 +43,13 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Ephemeral & Platform build artifacts
+**/ephemeral/
+**/macos/Flutter/ephemeral/
+**/linux/flutter/ephemeral/
+**/linux/flutter/generated_*
+**/macos/Flutter/GeneratedPluginRegistrant.swift
+*.lock
+!pubspec.lock
+**/.swiftpm/
