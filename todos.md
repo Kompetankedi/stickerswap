@@ -54,7 +54,7 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 ### Faz 0 Çıkış Kriteri
 - [x] `flutter analyze --fatal-infos` temiz geçti.
 - [x] `flutter test` temiz geçti.
-- [ ] Android debug build alıp cihaz/emülatörde bot token kaydetme, okuma ve WhatsApp'a aktarma akışı doğrulandı. (APK derlendi: `flutter build apk --debug`; cihaz/emülatör çevrimdışı olduğu için canlı cihaz testi beklemede)
+- [x] Android debug build alıp cihaz/emülatörde bot token kaydetme, okuma ve WhatsApp'a aktarma akışı doğrulandı. *(Redmi Note 12 Pro 4G / `2209116AG`, Android 16 üzerinde debug `2.0.0+2010` ile `FlutterSharedPreferences.xml` -> `FlutterSecureStorage.xml` migrasyonu, Ayarlar `Test Et & Kaydet`, traversal engeli ve WhatsApp aktarımı doğrulandı.)*
 - [x] `fix/p0-security-and-hygiene` -> `develop` merge edildi.
 
 ---
@@ -110,7 +110,7 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 
 ### Faz 2 Çıkış Kriteri
 - [x] `flutter analyze --fatal-infos` ve `flutter test` geçti. (Ayrıca `flutter build apk --debug` ve `flutter build apk --release` geçti.)
-- [ ] Fiziksel Android cihazda animasyonlu (`.tgs` ve `.webm`) + statik paket aktarımı, iptal ve ardışık paket açma/kapama test edildi. *(Bağlı fiziksel Android cihaz yok — canlı cihaz testi bekliyor)*
+- [x] Fiziksel Android cihazda animasyonlu (`.tgs` ve `.webm`) + statik paket aktarımı, iptal ve ardışık paket açma/kapama test edildi. *(`2209116AG` Android 16 cihazında statik `Animals`, `.tgs` `HotCherry`, `.webm` `sonerinkarisi_by_fStikBot`, `İşlemi İptal Et` ve ardışık aç-kapa akışları başarıyla doğrulandı.)*
 - [x] Branch'ler `develop` içine merge edildi. (`refactor/pack-preview-screen`, `fix/native-threadpool-and-codec`)
 
 ---
@@ -180,9 +180,24 @@ Doğrudan `main` dalına commit atılmaz. Tüm işler aşağıdaki akışla yür
 
 ## 📌 Hızlı İlerleme Özeti
 - [x] **Hazırlık:** `develop` branch açıldı
-- [ ] **Faz 0 (P0):** Güvenlik, analiz ve repo temizliği tamamlandı *(kod & build tamam; canlı cihaz doğrulaması beklemede)*
-- [x] **Faz 1 (P1):** README ve log hijyeni tamamlandı
-- [ ] **Faz 2 (P1):** God Screen parçalandı ve native thread/codec sertleştirildi *(kod, test & APK build tamam; fiziksel cihaz testi beklemede)*
+- [x] **Faz 0 (P0):** Güvenlik, analiz ve repo temizliği tamamlandı *(canlı cihaz doğrulaması dahil)*
+- [x] **Faz 1 (P1):** README ve log hijyeni tamamlandı *(release logcat dahil doğrulandı)*
+- [x] **Faz 2 (P1):** God Screen parçalandı ve native thread/codec sertleştirildi *(fiziksel cihaz testleri dahil doğrulandı)*
 - [x] **Faz 3 (P2):** Pre-flight validator, CuratedPack UI, yasal uyarı ve iOS fallback tamamlandı
 - [x] **Faz 4 (P2):** Mock API testleri, Android testleri, CI ve `v2.0.0` etiketi tamamlandı
+
+---
+
+## 📱 Canlı Cihaz Test Listesi (Redmi Note 12 Pro 4G — Android 16 / ADB)
+
+- [x] **T1 (Faz 0) Legacy Bot Token Migrasyonu:** `1.0.5+2006` -> `2.0.0+2010` debug güncellemesi sonrasında plain-text `flutter.bot_token` anahtarının `FlutterSharedPreferences.xml`'den silinip `FlutterSecureStorage.xml` (`EncryptedSharedPreferences`) içine taşındığı doğrulandı.
+- [x] **T2 (Faz 0) Bot Token Okuma & Kaydetme (`SettingsScreen`):** Ayarlar ekranında kayıtlı token'ın okunduğu ve `Test Et & Kaydet` ile canlı Telegram `getMe` doğrulaması (`✅ Bağlantı başarılı (539 ms)`) sonrası yalnızca `FlutterSecureStorage.xml`'e kaydedildiği doğrulandı.
+- [x] **T3 (Faz 0) `StickerContentProvider` Path Traversal Koruması:** `content read` ile `../shared_prefs/FlutterSecureStorage.xml` ve `%2F` traversal denemelerinin engellendiği (gizli veri yerine fallback WebP döndüğü) cihaz üzerinde doğrulandı.
+- [x] **T4 (Faz 2) Statik & Çok Parçalı Paket Aktarımı:** `Animals` (`Just zoo it Part 1`, 30 çıkartma, `22–38 KB`) dönüştürülüp WhatsApp `AddThirdPartyStickerPackActivity` onay ekranından başarıyla aktarıldı (`1 / 2 parça eklendi`).
+- [x] **T5 (Faz 2) Mid-Export İptal Testi (`İşlemi İptal Et`):** Aktif video/dönüşüm işlemi (`%87`, `7 / 8`) sürerken `İşlemi İptal Et` butonuna basılarak çökme olmadan iptal edildiği (`WhatsApp'a aktarım işlemi iptal edildi.`) doğrulandı.
+- [x] **T6 (Faz 2) Animasyonlu `.tgs` (Lottie) WhatsApp Aktarımı:** `HotCherry` (34 `.tgs` çıkartması; `12–22` kare, `1500–3000 ms`, maks `294K`) dönüştürülüp `Hot Cherry Part 1` (30 çıkartma) WhatsApp `AddThirdPartyStickerPackActivity` üzerinden başarıyla eklendi (`1 / 2 parça eklendi`).
+- [x] **T7 (Faz 2) Animasyonlu `.webm` (Video / `MediaCodec` VP9) Sıfırdan Dönüşüm & Aktarım:** `sonerinkarisi_by_fStikBot` `_wa_v4.webp` önbellekleri temizlenip `Executors.newFixedThreadPool(3)` (3 paralel thread) + `MediaCodec` + YUV/NV21 akışıyla tüm 8 `.webm` çıkartması sıfırdan üretildi (`54K–209K`) ve WhatsApp'a başarıyla aktarıldı.
+- [x] **T8 (Faz 2) Ardışık Paket Açma/Kapama Kararlılığı:** `PepeTheKing`, `Animals`, `sonerinkarisi_by_fStikBot` ve `HotCherry` arka arkaya açılıp kapatıldı; `logcat` üzerinde sıfır çökme/ANR/exception (`NO_CRASHES`) gözlemlendi.
+- [x] **T9 (Faz 3) `CuratedPacksCarousel` & `SettingsScreen` UI Kontrolleri:** `Sevimli` / `Memeler` filtre chip'leri, `@PepeTheKing` kartıyla paket önizleme açılışı (`Pepe the King`), yasal uyarı kartı ve `2.0.0+2010` sürüm bilgisi cihaz üzerinde doğrulandı.
+- [x] **T10 (Faz 1) Release APK (`v2.0.0+2010`) Log Hijyeni:** `app-release.apk` (non-debuggable) kurulup `.webm` dönüşümü ve traversal isteği çalıştırıldı; `adb logcat` içinde `StickerContentProvider`, `MainActivity`, `WhatsAppMethodHandler`, `StickerPackStorage` veya Dart tarafında hassas yol/token/hash sızıntısı olmadığı (`ZERO_APP_LOGS`) doğrulandı.
 
